@@ -14,6 +14,16 @@ código; inicio y cierre de sesión con caducidad por inactividad; cambio de con
 administración de usuarios e invitaciones; borrado del propio usuario con todos sus datos;
 código de restablecimiento de contraseña generado por el administrador."
 
+## Clarifications
+
+### Session 2026-10-14
+
+- Q: ¿El administrador puede usar también la aplicación como deportista o entrenador, o la cuenta de administrador sirve solo para administrar? → A: Solo para administrar: un usuario administrador no vincula cuentas Garmin ni pertenece a clubes; quien además entrena o compite usa un segundo usuario normal con otro correo.
+- Q: ¿Qué pasa con los datos y las descargas de Garmin de un usuario cuando el administrador lo desactiva? → A: Se bloquea el inicio de sesión, se pausan sus descargas de Garmin y los entrenadores dejan de ver sus datos mientras siga desactivado; los datos se conservan y todo se restablece al reactivarlo.
+- Q: ¿Puede el administrador borrar a otro usuario con todos sus datos, por ejemplo cuando el interesado lo pide pero ya no puede iniciar sesión? → A: Sí, pero solo a usuarios normales ya desactivados, confirmando con el correo del usuario y dejando constancia en la auditoría.
+- Q: Cuando un correo acumula 5 intentos fallidos, ¿se bloquea ese correo desde cualquier lugar o solo desde el origen donde se produjeron los fallos? → A: Se bloquea el par correo + origen 15 minutos tras 5 fallos en 15 minutos; además, un límite global por correo (50 fallos/hora desde cualquier origen) introduce un retardo creciente en lugar de un bloqueo total.
+- Q: ¿La invitación va ligada al correo de la persona invitada, de modo que solo pueda darse de alta con ese correo, o vale para cualquier correo? → A: Va ligada: el administrador indica el correo al crear la invitación y el alta solo se acepta con ese correo, que el formulario muestra ya rellenado y sin poder cambiarlo.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Crear el primer administrador desde la línea de comandos (Priority: P1)
@@ -43,9 +53,8 @@ esas credenciales.
 
 ### User Story 2 - Generar una invitación (Priority: P1)
 
-El administrador genera desde la web un código de invitación de un solo uso, con una caducidad
-configurable (7 días por defecto) y una nota opcional que le ayude a recordar a quién va
-dirigido. La aplicación muestra el código una única vez y el administrador lo entrega por sus
+El administrador genera desde la web un código de invitación de un solo uso para un correo
+concreto, con una caducidad configurable (7 días por defecto) y una nota opcional. La aplicación muestra el código una única vez y el administrador lo entrega por sus
 propios medios.
 
 **Why this priority**: es la única forma de que entren usuarios nuevos.
@@ -55,20 +64,25 @@ muestra una sola vez y que aparece como pendiente en el listado de invitaciones.
 
 **Acceptance Scenarios**:
 
-1. **Given** un administrador con sesión iniciada, **When** genera una invitación sin indicar la
-   caducidad, **Then** obtiene un código que caduca a los 7 días y que aparece como "pendiente".
+1. **Given** un administrador con sesión iniciada, **When** genera una invitación para un correo
+   sin indicar la caducidad, **Then** obtiene un código ligado a ese correo, que caduca a los 7
+   días y que aparece como "pendiente".
 2. **Given** un administrador, **When** genera una invitación con una caducidad de 2 días,
    **Then** el código caduca a los 2 días.
 3. **Given** una invitación ya generada, **When** el administrador vuelve a consultarla,
-   **Then** ve su estado, nota y fechas, pero no el código.
+   **Then** ve el correo invitado, su estado, la nota y las fechas, pero no el código.
 4. **Given** un usuario sin rol de administrador, **When** intenta generar una invitación,
    **Then** la petición se rechaza.
+5. **Given** un correo que ya pertenece a un usuario o que ya tiene una invitación pendiente,
+   **When** el administrador intenta invitarlo, **Then** se rechaza con un mensaje que lo explica.
+   El administrador puede revocar la pendiente y generar otra.
 
 ---
 
 ### User Story 3 - Completar el alta con un código (Priority: P1)
 
-La persona invitada abre la página de alta, introduce el código, su nombre, su correo y una
+La persona invitada abre la página de alta e introduce el código. El formulario le muestra el
+correo de la invitación, ya rellenado y sin poder cambiarlo. Ella introduce su nombre y una
 contraseña, y entra directamente en la aplicación con la sesión iniciada.
 
 **Why this priority**: es el camino para que un usuario real empiece a usar la aplicación.
@@ -84,8 +98,9 @@ aplicación; repetir con el mismo código y comprobar que se rechaza.
 2. **Given** un código ya usado, caducado, revocado o inexistente, **When** se intenta el alta,
    **Then** se rechaza con un mensaje genérico ("código no válido o caducado") que no distingue
    entre esos casos.
-3. **Given** un correo ya registrado, **When** se intenta el alta, **Then** se rechaza y el
-   código no se consume.
+3. **Given** un código válido, **When** se envía el alta con un correo distinto del de la
+   invitación (manipulando el formulario), **Then** se rechaza con el mensaje genérico y el código
+   no se consume.
 4. **Given** una contraseña trivial o demasiado corta, **When** se intenta el alta, **Then** se
    rechaza indicando la regla incumplida y el código no se consume.
 5. **Given** dos altas simultáneas con el mismo código, **When** ambas se envían a la vez,
@@ -114,11 +129,15 @@ protegidas ya no son accesibles; dejar pasar el tiempo de inactividad y comproba
    invalidada y no puede reutilizarse.
 4. **Given** una sesión sin actividad durante más del tiempo configurado (30 minutos por
    defecto), **When** el usuario hace una petición, **Then** se le redirige al inicio de sesión.
-5. **Given** 5 intentos fallidos para un mismo correo en 15 minutos, **When** se hace un sexto
-   intento, aunque sea con la contraseña correcta, **Then** se rechaza con el mensaje genérico
-   hasta que pase el periodo de bloqueo.
+5. **Given** 5 intentos fallidos para un mismo correo desde un mismo origen en 15 minutos,
+   **When** se hace un sexto intento desde ese origen, aunque sea con la contraseña correcta,
+   **Then** se rechaza con el mensaje genérico hasta que pase el periodo de bloqueo. Desde otro
+   origen, el usuario legítimo sigue pudiendo entrar.
 6. **Given** 20 intentos fallidos desde un mismo origen en 15 minutos, **When** se hace otro
    intento desde ese origen, **Then** se rechaza hasta que pase el periodo de bloqueo.
+7. **Given** más de 50 intentos fallidos en una hora para un mismo correo, sumando todos los
+   orígenes, **When** se hace un nuevo intento, **Then** la respuesta se retrasa de forma
+   creciente, pero con la contraseña correcta se sigue pudiendo entrar.
 
 ---
 
@@ -160,16 +179,25 @@ petición se rechaza; reactivarlo y comprobar que puede volver a entrar.
    correo, el rol, el estado (activo o desactivado), la fecha de alta y el último inicio de sesión
    de cada usuario. No ve datos de entrenamiento ni de salud.
 2. **Given** un usuario activo con sesiones abiertas, **When** el administrador lo desactiva,
-   **Then** todas sus sesiones se invalidan inmediatamente y no puede volver a iniciar sesión.
+   **Then** todas sus sesiones se invalidan inmediatamente, no puede volver a iniciar sesión, se
+   pausan las descargas de sus cuentas Garmin y ningún entrenador ve sus datos, aunque tenga su
+   consentimiento.
 3. **Given** un usuario desactivado, **When** el administrador lo reactiva, **Then** puede
-   volver a iniciar sesión con su contraseña.
+   volver a iniciar sesión con su contraseña, sus descargas se reanudan y los consentimientos que
+   tenía dados vuelven a surtir efecto, sin haber perdido ningún dato.
 4. **Given** una invitación pendiente, **When** el administrador la revoca, **Then** su código
    deja de valer.
-5. **Given** el listado de invitaciones, **When** el administrador lo consulta, **Then** ve su
-   estado (pendiente, usada, caducada o revocada), su nota, la fecha de creación, la de caducidad
-   y, si se usó, qué usuario la usó.
+5. **Given** el listado de invitaciones, **When** el administrador lo consulta, **Then** ve el
+   correo invitado, su estado (pendiente, usada, caducada o revocada), su nota, la fecha de
+   creación, la de caducidad y, si se usó, qué usuario la usó.
 6. **Given** que solo queda un administrador activo, **When** se intenta desactivarlo, **Then**
    se rechaza. Ningún administrador puede desactivarse a sí mismo.
+7. **Given** un usuario normal desactivado, **When** el administrador pide borrarlo y confirma
+   escribiendo el correo de ese usuario, **Then** se eliminan el usuario y todos sus datos, igual
+   que en el borrado propio (FR-028), y queda un evento de auditoría con el administrador que lo
+   hizo.
+8. **Given** un usuario activo o un administrador, **When** el administrador intenta borrarlo,
+   **Then** se rechaza; un usuario activo primero tiene que desactivarse.
 
 ---
 
@@ -230,6 +258,8 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 - Si una invitación caduca mientras la persona está rellenando el formulario, el alta se rechaza
   con el mensaje genérico.
 - Si un usuario es desactivado en mitad de una petición, la siguiente petición se rechaza.
+- Si un usuario es desactivado mientras se descargan datos de una de sus cuentas Garmin, la
+  descarga se detiene limpiamente en su siguiente punto de control y se reanuda al reactivarlo.
 - Si se genera un segundo código de restablecimiento para el mismo usuario, el primero queda
   anulado.
 - Si se pide eliminar un usuario y el borrado falla a mitad, la operación se puede reintentar
@@ -252,7 +282,7 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
   - caducidad de los códigos de restablecimiento: 24 horas;
   - inactividad de la sesión: 30 minutos;
   - duración máxima de la sesión: 12 horas;
-  - límites de intentos: los indicados en FR-030 y FR-031.
+  - límites de intentos: los indicados en FR-030, FR-030a y FR-031.
 
 **Administradores**
 
@@ -261,11 +291,16 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
   confirmación.
 - **FR-004**: Los administradores MUST crearse solo desde la línea de comandos; ninguna acción de
   la web otorga el rol de administrador.
+- **FR-004a**: Un usuario administrador MUST NOT poder vincular cuentas Garmin, solicitar el
+  ingreso en un club ni ser miembro de un club con ningún rol (ni atleta ni entrenador). El rol de
+  un usuario no cambia después de crearse.
 
 **Invitaciones**
 
-- **FR-005**: Un administrador MUST poder generar invitaciones de un solo uso, con una caducidad
-  opcional (7 días si no se indica) y una nota opcional.
+- **FR-005**: Un administrador MUST poder generar invitaciones de un solo uso, cada una ligada a un
+  correo obligatorio, con una caducidad opcional (7 días si no se indica) y una nota opcional.
+- **FR-005a**: El sistema MUST rechazar una invitación para un correo que ya pertenece a un usuario
+  o que ya tiene otra invitación pendiente.
 - **FR-006**: El código de invitación MUST mostrarse una única vez, al generarse, y MUST tener
   entropía suficiente para que no pueda adivinarse.
 - **FR-007**: El sistema MUST almacenar los códigos de invitación solo de forma no reversible.
@@ -277,8 +312,9 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 
 **Alta**
 
-- **FR-011**: El alta con código MUST pedir el nombre, el correo y la contraseña. Si tiene éxito,
-  crea un usuario con rol normal y deja su sesión iniciada.
+- **FR-011**: El alta con código MUST pedir el nombre y la contraseña, y MUST usar como correo
+  del usuario el de la invitación. El sistema MUST rechazar cualquier alta con un correo
+  distinto. Si tiene éxito, crea un usuario con rol normal y deja su sesión iniciada.
 - **FR-012**: Cada usuario MUST tener un identificador interno estable, independiente de su
   correo, de su nombre y de sus cuentas Garmin.
 - **FR-013**: El correo MUST ser único, comparándolo sin distinguir mayúsculas y sin espacios
@@ -312,10 +348,17 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 **Administración**
 
 - **FR-024**: Un administrador MUST poder listar usuarios (nombre, correo, rol, estado, fecha de
-  alta y último inicio de sesión) e invitaciones (estado, nota, fechas y usuario que la usó).
+  alta y último inicio de sesión) e invitaciones (correo invitado, estado, nota, fechas y
+  usuario que la usó).
 - **FR-025**: Un administrador MUST poder desactivar y reactivar usuarios.
-- **FR-026**: Desactivar a un usuario MUST invalidar todas sus sesiones de inmediato e impedir
-  que vuelva a iniciar sesión.
+- **FR-026**: Desactivar a un usuario MUST, de inmediato:
+  - invalidar todas sus sesiones e impedir que vuelva a iniciar sesión;
+  - pausar las descargas programadas o pendientes de sus cuentas Garmin (un trabajo en curso se
+    detiene en su siguiente punto de control);
+  - hacer que ningún entrenador vea sus datos, aunque tenga su consentimiento.
+
+  Los datos y los consentimientos se conservan. Al reactivar al usuario, todo se restablece. Las
+  features de sincronización y de consentimiento MUST respetar este estado.
 - **FR-027**: El sistema MUST impedir desactivar o eliminar al último administrador activo, y que
   un administrador se desactive a sí mismo.
 
@@ -330,6 +373,10 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
   - sus sesiones.
 
   Cualquier dato de usuario que añadan features futuras MUST quedar incluido en este borrado.
+- **FR-028a**: Un administrador MUST poder borrar a un usuario normal que esté desactivado,
+  confirmando con el correo de ese usuario. El borrado tiene el mismo alcance que FR-028. El
+  sistema MUST rechazar el borrado por un administrador de usuarios activos y de otros
+  administradores.
 
 **Restablecimiento**
 
@@ -345,8 +392,13 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 
 **Protección frente a abusos**
 
-- **FR-030**: El sistema MUST limitar los intentos fallidos de inicio de sesión por correo: tras 5
-  fallos en 15 minutos, ese correo queda bloqueado 15 minutos.
+- **FR-030**: El sistema MUST limitar los intentos fallidos de inicio de sesión por correo y origen:
+  tras 5 fallos en 15 minutos para el mismo par correo + origen, ese par queda bloqueado 15
+  minutos.
+- **FR-030a**: El sistema MUST aplicar además un límite global por correo: a partir de 50 fallos en
+  una hora, sumando todos los orígenes, cada nuevo intento para ese correo recibe un retardo
+  creciente, con un máximo de 10 segundos. Nunca hay un bloqueo total que impida entrar con la
+  contraseña correcta. Al superar este límite se registra un evento de auditoría.
 - **FR-031**: El sistema MUST limitar los intentos fallidos por origen: 20 fallos en 15 minutos.
   Esto se aplica al inicio de sesión y al canje de códigos.
 - **FR-032**: Los mensajes de error del inicio de sesión, el alta y el restablecimiento MUST NOT
@@ -366,7 +418,7 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
   - cambios de contraseña;
   - generación y uso de códigos de restablecimiento;
   - desactivaciones y reactivaciones;
-  - borrados de usuario.
+  - borrados de usuario, indicando si los pidió el propio usuario o un administrador.
 
   Cada evento incluye la fecha y hora, el tipo, el usuario que actúa, el usuario afectado (si lo
   hay) y el origen.
@@ -377,11 +429,12 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 ### Key Entities
 
 - **Usuario**: persona que usa la aplicación. Atributos: identificador interno estable, nombre
-  visible, correo único, credencial no reversible, rol (usuario o administrador), estado (activo o
+  visible, correo único, credencial no reversible, rol fijo (usuario o administrador; el
+  administrador nunca tiene cuentas Garmin ni membresías), estado (activo o
   desactivado), fecha de alta y último inicio de sesión. Más adelante se relacionará con cuentas
   Garmin, clubes y consentimientos.
 - **Invitación**: código de un solo uso para darse de alta. Atributos: código no reversible,
-  administrador que la creó, nota, fecha de creación, fecha de caducidad, estado (pendiente,
+  correo invitado, administrador que la creó, nota, fecha de creación, fecha de caducidad, estado (pendiente,
   usada, caducada o revocada) y usuario creado al usarla.
 - **Código de restablecimiento**: código de un solo uso para fijar una contraseña nueva.
   Atributos: código no reversible, usuario destinatario, administrador emisor, fecha de creación,
@@ -401,7 +454,8 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 - **SC-002**: El 100 % de los intentos con códigos usados, caducados, revocados o sustituidos se
   rechazan, incluidos los intentos simultáneos con un mismo código.
 - **SC-003**: Tras desactivar a un usuario, el 0 % de sus peticiones posteriores se aceptan,
-  incluidas las de sesiones abiertas antes de la desactivación.
+  incluidas las de sesiones abiertas antes de la desactivación, y no se hace ninguna petición
+  nueva a Garmin para sus cuentas.
 - **SC-004**: Una revisión de la base de datos y de los logs tras un ciclo completo (alta, inicio
   de sesión, cambio de contraseña, restablecimiento y borrado) no encuentra ninguna contraseña ni
   código en claro.
@@ -416,16 +470,15 @@ comprobar que la antigua deja de valer y que el código no puede reutilizarse.
 
 - Hay dos roles en esta feature: usuario y administrador. Entrenadores, clubes y consentimientos
   se definen en features posteriores, que se engancharán al borrado de usuario (FR-028).
-- Las invitaciones no van ligadas a un correo concreto: quien tenga el código puede darse de
-  alta con cualquier correo no registrado. La nota solo sirve como recordatorio para el
-  administrador.
 - El correo no puede cambiarse en esta feature.
 - La aplicación no envía correos: invitaciones y códigos de restablecimiento se entregan a mano.
   No hay recuperación de contraseña automática.
-- El administrador no puede borrar a otros usuarios desde la web, solo desactivarlos. El borrado
-  lo pide el propio usuario.
-- Un administrador también es un usuario y puede tener sus propios datos. Según la constitución,
-  no ve datos de entrenamiento ni de salud de otros usuarios.
+- El administrador solo puede borrar a usuarios normales ya desactivados (FR-028a), por ejemplo
+  para atender una petición de supresión de alguien que ya no puede iniciar sesión. Cualquier otro
+  borrado lo hace el propio usuario.
+- Las cuentas de administrador sirven solo para administrar (ver FR-004a). Quien además entrena
+  o compite usa un segundo usuario normal con otro correo. Así, la regla de la constitución de que
+  el administrador no ve datos de entrenamiento ni de salud se cumple sin excepciones.
 - La lista de contraseñas comunes se incluye con la aplicación y no requiere consultar servicios
   externos.
 - Por "origen" se entiende la dirección de red del cliente tal como la ve la aplicación detrás de
