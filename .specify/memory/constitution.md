@@ -74,8 +74,8 @@ oficial.
 
 - Las pulsaciones, el sueño y la HRV son datos de salud y DEBEN tratarse con mínimo privilegio.
 - El propietario ve sus propios datos. Un entrenador solo ve los datos de un atleta si este le ha
-  dado un consentimiento explícito, por entrenador y por categoría (`activities`, `route_map`,
-  `daily_health`). La revocación DEBE surtir efecto en la siguiente petición, sin cachés que la
+  dado un consentimiento explícito, por entrenador y por categoría (`activities`, `route`,
+  `health`). La revocación DEBE surtir efecto en la siguiente petición, sin cachés que la
   retrasen.
 - El administrador gestiona usuarios, clubes y solicitudes, pero NO DEBE poder acceder a datos de
   entrenamiento ni de salud de los atletas a través de la interfaz.
@@ -217,4 +217,4 @@ internacional.
 - La conformidad se revisa en `/speckit-plan` (Constitution Check) y en `/speckit-analyze`. Las
   violaciones de un principio con DEBE son bloqueantes.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-14 | **Last Amended**: 2026-10-14
+**Version**: 1.0.1 | **Ratified**: 2026-10-14 | **Last Amended**: 2026-10-19
