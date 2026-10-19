@@ -1,7 +1,7 @@
 # Contrato: eventos de auditoría (feature 001)
 
-- Cada fila de `audit_event` tiene `event_type`, `actor_user_id`, `subject_user_id`, `ip` y
-  `details` (JSON).
+- Cada fila de `audit_event` tiene `event_type`, `actor_user_id`, `subject_user_id`, `ip_prefix`
+  (red reducida, nunca la dirección completa) y `details` (JSON).
 - `details` solo admite las claves listadas en esta tabla. **Nunca** contiene correos, nombres,
   contraseñas, códigos ni identificadores de sesión. Un test verifica esta lista blanca.
 
@@ -17,11 +17,12 @@
 | `auth.code_redeem_failed` | NULL | NULL | `{"kind": "invitation" \| "reset", "reason": "invalid" \| "blocked_ip"}` | US3, US8 |
 | `auth.logout` | usuario | usuario | `{}` | US4 |
 | `user.name_changed` | usuario | usuario | `{}` | US5 |
+| `user.data_exported` | usuario | usuario | `{"sections"}` | US5, FR-023a |
 | `user.password_changed` | usuario | usuario | `{"sessions_closed"}` | US5 |
 | `user.password_change_failed` | usuario | usuario | `{}` | US5 |
 | `reset.created` | admin | usuario | `{"reset_id"}` | US8 |
 | `reset.used` | usuario | usuario | `{"reset_id", "sessions_closed"}` | US8 |
-| `user.deactivated` | admin | usuario | `{"sessions_closed"}` | US6 |
+| `user.deactivated` | admin | usuario | `{"sessions_closed", "resets_expired"}` | US6 |
 | `user.reactivated` | admin | usuario | `{}` | US6 |
 | `user.deletion_requested` | usuario o admin | usuario | `{"by": "self" \| "admin"}` | US7, FR-028a |
 | `user.deletion_step_failed` | NULL | usuario | `{"step"}` | R16 |

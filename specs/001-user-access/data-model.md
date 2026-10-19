@@ -96,9 +96,11 @@ Usuario de la aplicación (FR-012).
 **Reglas**
 - Solo se genera si el usuario está `active` (US8, escenario 4).
 - Al generar un código, el anterior pendiente pasa a `superseded` en la misma transacción.
-- Al usarlo se comprueba `code_hash` y que el `user_id` corresponda al correo introducido. Si es
-  así: `status='used'`, se cambia la contraseña y se borran todas las sesiones del usuario
-  (FR-029).
+- Al usarlo se comprueba `code_hash`, que el `user_id` corresponda al correo introducido y que
+  `app_user.status='active'`. Si es así: `status='used'`, se cambia la contraseña y se borran
+  todas las sesiones del usuario (FR-029).
+- Al desactivar al usuario o pasarlo a `pending_deletion`, sus códigos `pending` pasan a
+  `expired` en la misma transacción (FR-029).
 - El paso de borrado de 001 elimina las filas del usuario.
 
 ## user_session
@@ -129,17 +131,18 @@ Usuario de la aplicación (FR-012).
 | attempt_id | BIGINT IDENTITY | PK |
 | attempted_at | DATETIME2(3) | NOT NULL |
 | email_hmac | BINARY(32) | NULL; `HMAC(k_email_rl, correo)`; NULL en los canjes de código sin correo |
-| ip | VARCHAR(45) | NOT NULL |
+| ip_hmac | BINARY(32) | NOT NULL; `HMAC(k_ip_rl, dirección)` (research R11) |
 | kind | VARCHAR(20) | NOT NULL, CHECK IN (`login`, `code_redeem`, `current_password`) |
 | succeeded | BIT | NOT NULL |
 
 **Índices**
 - `IX_login_attempt_email` (email_hmac, attempted_at).
-- `IX_login_attempt_ip` (ip, attempted_at).
+- `IX_login_attempt_ip` (ip_hmac, attempted_at).
 
 **Reglas**
 - Reglas de límite en research R10.
-- No contiene el correo en claro. Las filas de más de 24 horas se purgan de forma oportunista.
+- No contiene ni el correo ni la dirección de red en claro. Las filas de más de 24 horas se purgan
+  de forma oportunista.
 
 ## audit_event
 
@@ -150,7 +153,7 @@ Usuario de la aplicación (FR-012).
 | event_type | VARCHAR(64) | NOT NULL (catálogo en `contracts/audit-events.md`) |
 | actor_user_id | UNIQUEIDENTIFIER | NULL, **sin FK** |
 | subject_user_id | UNIQUEIDENTIFIER | NULL, **sin FK** |
-| ip | VARCHAR(45) | NULL |
+| ip_prefix | VARCHAR(50) | NULL; red reducida (`203.0.113.0/24`, `2001:db8:1::/48`), nunca la dirección completa |
 | details | NVARCHAR(1000) | NULL; JSON con claves en lista blanca, sin datos personales |
 
 **Índices**
@@ -160,8 +163,8 @@ Usuario de la aplicación (FR-012).
 **Reglas**
 - Trigger `TR_audit_event_immutable` de tipo INSTEAD OF UPDATE, DELETE que hace
   `THROW 51000, 'audit_event is insert-only', 1`.
-- Nunca guarda correos, nombres, contraseñas ni códigos. Tras borrar a un usuario solo quedan sus
-  UUID (FR-035).
+- Nunca guarda correos, nombres, contraseñas, códigos ni direcciones de red completas. Tras borrar a
+  un usuario solo quedan sus UUID y prefijos de red (FR-035).
 
 ## Relaciones
 

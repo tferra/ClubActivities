@@ -6,7 +6,8 @@
 - Las acciones de las listas de administración usan HTMX, que devuelve fragmentos HTML.
 - **CSRF**:
   - Todo POST exige un token válido (research R9): el campo `csrf_token` o la cabecera
-    `X-CSRF-Token`.
+    `X-CSRF-Token`. Lo comprueba la dependencia `require_csrf`, aplicada a nivel de router, y la
+    ruta sigue recibiendo todos los campos del formulario.
   - Si `Origin` está presente, debe coincidir con `GARMIN_HUB_PUBLIC_URL`.
   - Si falla, la respuesta es `403` con la página "La sesión del formulario ha caducado; recarga e
     inténtalo de nuevo".
@@ -39,7 +40,7 @@
 | GET | `/healthz` | — | 200 `ok`, sin acceso a la base de datos | — |
 
 `POST /login`, `POST /alta/codigo`, `POST /alta` y `POST /restablecer` aplican el límite de
-intentos (R10).
+intentos (R10). Son `async def` y esperan el retardo de R10 sin ocupar un hilo del servidor.
 
 ## Rutas autenticadas
 
@@ -48,7 +49,8 @@ intentos (R10).
 | GET | `/` | — | 200, página de inicio (marcador de posición para features posteriores) | — |
 | GET | `/cuenta` | — | 200, perfil (nombre y correo) | — |
 | POST | `/cuenta/nombre` | `display_name` | 303 → `/cuenta` | 422 |
-| POST | `/cuenta/contrasena` | `current_password`, `password`, `password_confirm` | 303 → `/cuenta`; cierra las demás sesiones | 422. Un `current_password` incorrecto cuenta como intento de tipo `current_password` |
+| POST | `/cuenta/contrasena` | `current_password`, `password`, `password_confirm` | 303 → `/cuenta`; cierra las demás sesiones | 422. Un `current_password` incorrecto cuenta como intento de tipo `current_password` para el límite del par correo + origen (FR-030); si el par está bloqueado, 422 con el mismo mensaje |
+| GET | `/cuenta/exportar` | — | 200, `application/json` con `Content-Disposition: attachment; filename="garmin-hub-export.json"`: `{"format_version": 1, "exported_at", "profile": {...}, "audit_events": [...]}`. Nunca incluye `password_hash` ni datos de otros usuarios (FR-023a) | — |
 | GET | `/cuenta/eliminar` | — | 200; explica qué se borra y pide la contraseña y escribir `ELIMINAR` | — |
 | POST | `/cuenta/eliminar` | `current_password`, `confirmation` | 303 → `/login?eliminada=1` | 422 sin borrar nada; 409 si es el último administrador activo |
 
@@ -71,7 +73,10 @@ Un `{user_id}` o `{invitation_id}` inexistente devuelve `404`.
 
 ## Cookies
 
-| Nombre (prod / dev) | Contenido | Atributos |
+| Nombre | Contenido | Atributos |
 |---------------------|-----------|-----------|
-| `__Host-gh_session` / `gh_session` | id de sesión aleatorio | HttpOnly, Secure (prod), SameSite=Lax, Path=/; sin Max-Age (de sesión) |
-| `__Host-gh_csrf` / `gh_csrf` | nonce para los formularios anónimos | HttpOnly, Secure (prod), SameSite=Lax, Path=/ |
+| `__Host-gh_session` | id de sesión aleatorio | HttpOnly, Secure, SameSite=Lax, Path=/; sin Max-Age (de sesión) |
+| `__Host-gh_csrf` | nonce para los formularios anónimos | HttpOnly, Secure, SameSite=Lax, Path=/ |
+
+Los nombres y atributos son los mismos en todos los entornos (constitución IV). En desarrollo,
+`http://localhost` funciona con Chrome, Edge y Firefox, que lo tratan como contexto seguro.

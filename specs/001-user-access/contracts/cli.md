@@ -21,6 +21,16 @@ Error: faltan secretos obligatorios: GARMIN_HUB_DB_URL, GARMIN_HUB_SESSION_SECRE
 Defínelos como variables de entorno (ver .env.example).
 ```
 
+Cuando falta o no es válida la configuración obligatoria (`GARMIN_HUB_PUBLIC_URL`), el código es
+también 2 y el mensaje es:
+
+```
+Error: falta configuración obligatoria: GARMIN_HUB_PUBLIC_URL.
+```
+
+En desarrollo (`GARMIN_HUB_ENV=dev`), los secretos y la configuración pueden venir de `.env`; las
+variables del entorno real tienen prioridad (research R13).
+
 ## `garmin-hub db upgrade [--revision TEXT]`
 
 - Aplica las migraciones de Alembic hasta `--revision` (`head` por defecto) en el schema
@@ -33,18 +43,20 @@ Defínelos como variables de entorno (ver .env.example).
 
 - Pide la contraseña con `typer.prompt(hide_input=True, confirmation_prompt=True)`, que funciona
   en PowerShell y en bash. **No existe** ninguna opción `--password`.
-- Valida el correo (formato y que no exista), el nombre (de 1 a 100 caracteres) y la política de
-  contraseñas (FR-015 y FR-016). Si algo falla, devuelve 1 con el motivo y no crea nada.
+- Valida el correo (formato, que no exista y que no tenga una invitación pendiente), el nombre
+  (de 1 a 100 caracteres) y la política de contraseñas (FR-015 y FR-016). Si algo falla,
+  devuelve 1 con el motivo y no crea nada.
 - Si el esquema no está en `head`, devuelve 3 y sugiere `garmin-hub db upgrade`.
 - Si todo va bien, inserta `app_user` con `role='admin'` y `status='active'`, y registra la
-  auditoría `admin.created` con `actor_user_id=NULL` e `ip=NULL`.
+  auditoría `admin.created` con `actor_user_id=NULL` e `ip_prefix=NULL`.
 - stdout: `Administrador creado: <user_id>`. No imprime el correo ni la contraseña.
 
 ## `garmin-hub web serve [--host TEXT] [--port INT] [--reload]`
 
 - Valores por defecto: `--host 127.0.0.1` y `--port 8000`.
-- Lanza uvicorn con `proxy_headers=True` y `forwarded_allow_ips=GARMIN_HUB_TRUSTED_PROXIES`
-  (research R11), y con el log de acceso filtrado (R14).
+- Lanza uvicorn con `proxy_headers=True`, `forwarded_allow_ips=GARMIN_HUB_TRUSTED_PROXIES`
+  (research R11) y `access_log=False`; el log de acceso lo escribe `AccessLogMiddleware` sin
+  query string y solo con el prefijo de red (R14).
 - Antes de escuchar comprueba los secretos (código 2), la conexión a la base de datos y la revisión
   del esquema (código 3).
 - `--reload` solo está permitido si `GARMIN_HUB_ENV=dev`.

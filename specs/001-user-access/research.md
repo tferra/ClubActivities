@@ -11,6 +11,10 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 - **Decision**: usar SQLAlchemy Core 2.x en modo **síncrono**, con `pyodbc` (ODBC Driver 18).
   Las rutas de FastAPI se declaran con `def` (no `async def`), de modo que se ejecutan en el
   pool de hilos de Starlette. El engine es único por proceso, con `pool_pre_ping=True`.
+  **Excepción**: las rutas que aplican el límite de intentos (`POST /login`, `POST /alta/codigo`,
+  `POST /alta` y `POST /restablecer`) son `async def`, ejecutan el acceso a la base de datos con
+  `run_in_threadpool` y esperan el retardo de R10 con `await anyio.sleep`, para que un retardo no
+  ocupe un hilo del pool (ver R10).
 - **Rationale**: `pyodbc` es síncrono. Las alternativas asíncronas (`aioodbc`) añaden una
   dependencia poco madura sin aportar nada a esta escala (decenas de usuarios). El pool de hilos
   basta.
@@ -66,8 +70,9 @@ investigaciones transversales que se aplazan a la feature que las necesita.
   - Longitud entre 12 y 128 caracteres tras la normalización NFKC.
   - Se rechaza una contraseña si:
     - (a) está, en minúsculas, en la lista de contraseñas comunes;
-    - (b) contiene la parte local del correo o el nombre (fragmentos de 4 o más caracteres, sin
-      distinguir mayúsculas);
+    - (b) contiene, sin distinguir mayúsculas, la parte local completa del correo (si tiene 4 o
+      más caracteres) o alguna palabra completa del nombre de 4 o más caracteres (las palabras se
+      separan por espacios, guiones o apóstrofos) (FR-016);
     - (c) es un único carácter repetido.
   - La lista se vendoriza como `security/data/common_passwords.txt.gz`. Sale de la lista
     "top 1M" de SecLists (licencia MIT), **filtrada a las entradas de 12 o más caracteres**, que
@@ -100,6 +105,7 @@ investigaciones transversales que se aplazan a la feature que las necesita.
     - `csrf`: token CSRF ligado a la sesión;
     - `code`: códigos de invitación y restablecimiento;
     - `email-rl`: seudónimo del correo en `login_attempt`;
+    - `ip-rl`: seudónimo de la dirección de red en `login_attempt`;
     - `anon-csrf`: token CSRF de los formularios públicos.
   - Rotar el secreto invalida las sesiones y los códigos pendientes; está documentado en
     quickstart.
@@ -111,10 +117,12 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 - **Decision**:
   - El identificador de sesión es `secrets.token_urlsafe(32)` y va en la cookie.
   - En `user_session` se guarda solo `HMAC(k_session, id)`.
-  - Cookie `__Host-gh_session` con `HttpOnly`, `Secure`, `SameSite=Lax` y `Path=/`.
-  - En desarrollo (`GARMIN_HUB_PUBLIC_URL` con `http://localhost` o `http://127.0.0.1`) la cookie
-    se llama `gh_session` y no lleva `Secure`, porque algunos navegadores no aceptan `__Host-`
-    sobre http.
+  - Cookie `__Host-gh_session` con `HttpOnly`, `Secure`, `SameSite=Lax` y `Path=/`, **siempre**,
+    también en desarrollo (constitución IV, sin excepciones). Chrome, Edge y Firefox tratan
+    `http://localhost` como contexto seguro y aceptan ahí cookies `Secure` y `__Host-`; el
+    quickstart pide usar uno de ellos y `GARMIN_HUB_PUBLIC_URL=http://localhost:8000`.
+  - Los tests usan `TestClient(app, base_url="https://testserver")`, porque `httpx` no envía
+    cookies `Secure` sobre http.
   - Cada petición resuelve la sesión con un JOIN a `app_user` con `status='active'`. Si el usuario
     no está activo o la sesión ha caducado (por inactividad o por superar la duración máxima), la
     sesión se borra y se redirige a `/login`. Así, la desactivación tiene efecto inmediato
@@ -131,8 +139,12 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 
 - **Decision**:
   - **Con sesión**: token = `HMAC(k_csrf, session_id)`. Va como campo oculto `csrf_token` en
-    los formularios y como cabecera `X-CSRF-Token` en HTMX, mediante `hx-headers` en `<body>`. Un
-    middleware lo exige en todo POST, PUT, PATCH y DELETE, comparando en tiempo constante.
+    los formularios y como cabecera `X-CSRF-Token` en HTMX, mediante `hx-headers` en `<body>`. Una
+    **dependencia de FastAPI** (`require_csrf`), aplicada a nivel de router a toda ruta POST, PUT,
+    PATCH y DELETE, lo exige comparando en tiempo constante. Se descarta un middleware
+    `BaseHTTPMiddleware`, porque leer el formulario en él puede dejar el cuerpo vacío para la
+    ruta; con la dependencia, `request.form()` queda en caché en el mismo `Request` y la ruta
+    recibe los campos.
   - **Sin sesión** (login, alta, restablecimiento): doble envío firmado. La cookie
     `__Host-gh_csrf` contiene un nonce aleatorio y el formulario lleva `HMAC(k_anon_csrf, nonce)`.
   - **Defensa adicional**: si llega la cabecera `Origin`, debe coincidir con
@@ -145,21 +157,29 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 
 ## R10. Límite de intentos
 
-- **Decision**: la tabla `login_attempt` guarda `(attempted_at, email_hmac, ip, kind, succeeded)`
-  y aplica estas reglas antes de verificar la credencial:
-  1. **Por correo y origen**: si hay 5 o más fallos para el par `(email_hmac, ip)` en los últimos
-     15 minutos, posteriores al último acierto de ese par, se bloquea (FR-030).
-  2. **Por origen**: si hay 20 o más fallos desde la misma `ip` en 15 minutos, sumando todos los
-     tipos (`login`, `code_redeem`, `current_password`), se bloquea (FR-031).
-  3. **Global por correo**: con n fallos para el mismo `email_hmac` en 60 minutos, si n es 50 o
-     más se aplica un retardo de `min(10 s, 0.5 s × (n − 49))` antes de responder, sin bloquear
-     (FR-030a). Al cruzar el umbral se registra un evento de auditoría.
+- **Decision**: la tabla `login_attempt` guarda
+  `(attempted_at, email_hmac, ip_hmac, kind, succeeded)` y aplica estas reglas antes de verificar
+  la credencial:
+  1. **Por correo y origen**: si hay 5 o más fallos de tipo `login` o `current_password` para el
+     par `(email_hmac, ip_hmac)` en los últimos 15 minutos, posteriores al último inicio de sesión
+     correcto de ese par, se bloquea (FR-030). Un acierto reinicia el recuento.
+  2. **Por origen**: si hay 20 o más fallos de tipo `login` o `code_redeem` desde el mismo
+     `ip_hmac` en 15 minutos, se bloquea (FR-031). `current_password` no cuenta aquí.
+  3. **Global por correo**: con n fallos de tipo `login` para el mismo `email_hmac` en 60
+     minutos, si n es 50 o más se aplica un retardo de `min(10 s, 0.5 s × (n − 49))` antes de
+     responder, sin bloquear (FR-030a). Al cruzar el umbral se registra un evento de auditoría.
   4. Incluso cuando la petición está bloqueada se ejecuta una verificación de argon2, para no
      abrir un canal de tiempos.
+  - `check_attempts` **devuelve** la decisión y el retardo; no duerme. La ruta `async def` espera
+    el retardo con `await sleep(delay)` (inyectable; `anyio.sleep` en producción) **fuera** de
+    la transacción y del pool de hilos. Así, muchos correos atacados a la vez no agotan los
+    hilos del servidor ni retienen conexiones.
   - Las filas de más de 24 horas se purgan de forma oportunista.
-  - El correo nunca se guarda en claro en esta tabla.
+  - Ni el correo ni la dirección de red se guardan en claro en esta tabla: ambos van como HMAC
+    (`email-rl` e `ip-rl`), que basta para contar por igualdad.
 - **Rationale**: una sola tabla y consultas sobre índices `(email_hmac, attempted_at)` e
-  `(ip, attempted_at)`. Nadie puede bloquear al usuario legítimo desde otro origen.
+  `(ip_hmac, attempted_at)`. Nadie puede bloquear al usuario legítimo desde otro origen. Un
+  `time.sleep` dentro de una ruta síncrona permitiría agotar el pool de hilos (40 por defecto).
 - **Alternatives considered**: contadores en memoria (no sobreviven a varios procesos ni a
   reinicios, y Redis está prohibido); `slowapi` (limita por ruta, no por par correo + origen).
 
@@ -168,6 +188,13 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 - **Decision**: uvicorn se lanza con `proxy_headers=True` y
   `forwarded_allow_ips=GARMIN_HUB_TRUSTED_PROXIES`. Por defecto vale `127.0.0.1`; en Compose,
   la red interna. El origen es `request.client.host` tras ese procesamiento.
+- **Tratamiento como dato personal**: la dirección completa solo vive en memoria durante la
+  petición. El módulo `security/ip.py` ofrece:
+  - `client_ip(request) -> str`;
+  - `ip_prefix(ip) -> str`, que reduce a la red (IPv4 /24 → `203.0.113.0/24`, IPv6 /48 →
+    `2001:db8:1::/48`); se usa en `audit_event.ip_prefix` y en los logs;
+  - `ip_hmac(keys, ip) -> bytes`, con la subclave `ip-rl`; se usa solo en `login_attempt`.
+  Una dirección no válida se trata como `unknown`.
 - **Rationale**: así no se puede falsificar `X-Forwarded-For` desde internet.
 - **Alternatives considered**: leer `X-Forwarded-For` a mano (propenso a errores).
 
@@ -195,10 +222,18 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 ## R13. Configuración y secretos obligatorios (FR-001)
 
 - **Decision**:
-  - `Settings` (pydantic-settings, prefijo `GARMIN_HUB_`, `.env` solo si
-    `GARMIN_HUB_ENV=dev`) recoge los valores no secretos y los tiempos configurables de FR-002.
+  - `load_env_file(path=Path(".env")) -> Mapping[str, str]` lee `.env` con
+    `dotenv.dotenv_values` **solo si** el fichero existe y `GARMIN_HUB_ENV` vale `dev`, tomado
+    del entorno real o, si no está ahí, del propio `.env`. En cualquier otro caso devuelve un
+    mapa vacío. Las variables del entorno real siempre tienen prioridad.
+  - `Settings` (pydantic-settings, prefijo `GARMIN_HUB_`) recoge los valores no secretos y los
+    tiempos configurables de FR-002, recibiendo ese mapa como valores de respaldo.
+    `GARMIN_HUB_PUBLIC_URL` es **obligatoria** (CSRF, HSTS y cookies dependen de ella): si falta
+    o no es una URL http(s) válida, se lanza `MissingConfigError` y el CLI sale con el código 2
+    y el mensaje `Error: falta configuración obligatoria: GARMIN_HUB_PUBLIC_URL.`
   - `SecretProvider` (protocolo con `get(name) -> str | None`) tiene la implementación
-    `EnvSecretProvider`.
+    `EnvSecretProvider(fallback=load_env_file())`, que consulta `os.environ` y, si no está ahí,
+    el mapa de `.env`. Así los secretos de `.env` llegan al proveedor en desarrollo.
   - `load_secrets(provider)` comprueba los secretos obligatorios de 001:
     - `GARMIN_HUB_DB_URL`;
     - `GARMIN_HUB_SESSION_SECRET` (de 32 bytes o más).
@@ -219,12 +254,18 @@ investigaciones transversales que se aplazan a la feature que las necesita.
     evento) y `RotatingFileHandler` en `GARMIN_HUB_LOG_DIR` (10 MB × 5), además de stderr.
   - Un filtro `RedactingFilter`:
     - (a) sustituye por `***` el valor de las claves sensibles en `extra` y en `args` (`password`,
-      `pass`, `secret`, `token`, `code`, `cookie`, `authorization`, `session`, `csrf`, `email`);
-    - (b) enmascara con una expresión regular los correos y los códigos con formato
-      `XXXX-XXXX-…` en el mensaje.
-  - Los logs de acceso de uvicorn pasan por el mismo filtro y **no** registran la query string.
-- **Rationale**: lo exigen la constitución (IV) y SC-004. El test de "ciclo completo" captura
-  todos los logs y busca los valores en claro.
+      `pass`, `secret`, `token`, `code`, `cookie`, `authorization`, `session`, `csrf`, `email`,
+      `ip`, `client`, `remote_addr`, `db_url`);
+    - (b) enmascara con expresiones regulares, en el mensaje, los correos, los códigos con
+      formato `XXXX-XXXX-…`, las direcciones IPv4 e IPv6 completas y la contraseña de una URL de
+      conexión (`//usuario:***@`).
+  - El log de acceso de uvicorn se **desactiva** (`access_log=False`). Lo sustituye
+    `AccessLogMiddleware` (ASGI puro, en `logging_setup.py`), que registra método, ruta **sin**
+    query string, estado, duración e `ip_prefix` (R11), nunca la dirección completa.
+  - Los logs de error de uvicorn pasan por el mismo filtro.
+- **Rationale**: lo exigen la constitución (IV: ningún dato personal en logs; la dirección de red
+  lo es según el RGPD) y SC-004. El test de "ciclo completo" captura todos los logs y busca los
+  valores en claro.
 - **Alternatives considered**: `structlog` o `python-json-logger`. No hacen falta para un
   formateador de unas 30 líneas.
 
@@ -237,6 +278,8 @@ investigaciones transversales que se aplazan a la feature que las necesita.
   - Columnas `actor_user_id` y `subject_user_id` sin FK, para que el borrado del usuario no las
     arrastre (FR-035).
   - `details` es JSON con claves en lista blanca, nunca correos ni nombres.
+  - El origen se guarda como `ip_prefix` (red reducida, R11), nunca la dirección completa, porque
+    la tabla no puede limpiarse tras borrar al usuario.
 - **Rationale**: el trigger garantiza la regla aunque la cuenta de conexión del propietario sea
   `db_owner`.
 - **Alternatives considered**: tablas temporales o ledger de SQL Server (requieren versión o
@@ -257,6 +300,8 @@ investigaciones transversales que se aplazan a la feature que las necesita.
   - Si algo falla, el usuario queda en `pending_deletion`: no puede entrar y en el login se trata
     como inexistente. El listado de administración muestra "Borrado pendiente" con la acción
     "Reintentar".
+  - Al pasar a `pending_deletion`, en la misma transacción, los códigos de restablecimiento
+    pendientes pasan a `expired` (igual que al desactivar, FR-029).
   - Pasos propios de 001:
     - borrar `password_reset_code`;
     - poner a NULL las referencias de `invitation` (`created_by`, `used_by`, `revoked_by`).
@@ -278,6 +323,12 @@ investigaciones transversales que se aplazan a la feature que las necesita.
     solo si `rowcount == 1` se inserta el usuario, en la misma transacción.
   - Los códigos de restablecimiento siguen la misma pauta, con el índice único filtrado por
     `user_id WHERE status='pending'` y el paso de los anteriores a `superseded`.
+  - El canje de un código de restablecimiento exige además `app_user.status='active'` en la
+    misma sentencia (JOIN), y al desactivar a un usuario sus códigos pendientes pasan a
+    `expired` (FR-029).
+  - Si al canjear una invitación el `INSERT` de `app_user` viola `UX_app_user_email` (el correo
+    se registró por otra vía), la transacción se revierte y se responde con el mensaje genérico
+    de código, sin consumirlo. `admin create` rechaza un correo con una invitación pendiente.
 - **Rationale**: la base de datos garantiza FR-005a, FR-009 y SC-002, incluso con concurrencia.
 - **Alternatives considered**: bloqueos en la aplicación (no sirven con varios procesos).
 
@@ -299,6 +350,9 @@ investigaciones transversales que se aplazan a la feature que las necesita.
 | pydantic-settings | configuración | Fijado por el contexto técnico |
 | argon2-cffi | contraseñas | Constitución IV |
 | typer | CLI | Fijado por el contexto técnico |
+| python-dotenv | lectura de `.env` en desarrollo (R13) | Ya llega como dependencia de pydantic-settings; se declara porque se usa directamente |
+| anyio | `anyio.sleep` del retardo de R10 | Ya llega con Starlette; se declara porque se usa directamente |
+| hatchling | backend de build (`[build-system]`) | Solo en tiempo de build; es el backend por defecto de `uv init --package` |
 | *(dev)* pytest, ruff, httpx | calidad | Constitución IX; `httpx` lo necesita el `TestClient` |
 
 Las versiones exactas se fijan en `pyproject.toml` y en `uv.lock` durante la implementación.
@@ -320,4 +374,4 @@ Están en el contexto técnico del proyecto, pero no las necesita 001. Se invest
 | Columnstore frente a fila comprimida para `activity_record` y prueba con 100 actividades de 5 h | Descarga e ingesta de actividades |
 | `UPDLOCK, READPAST`, latido y scheduler de `sync_job` | Cola de sincronización y worker |
 | LTTB, Plotly `scattergl` y Leaflet vendorizados | Visualización de actividades |
-| Nombres de categoría de `can_view` (`activities`, `route`, `health` en inglés, según la constitución XII) | Clubes, entrenadores y consentimiento |
+| Uso de las categorías de `can_view` (`activities`, `route`, `health`, constitución v1.0.1) | Clubes, entrenadores y consentimiento |
