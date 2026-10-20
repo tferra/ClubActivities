@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Mi cuenta{% endblock %}
+{% block content %}
+<h1>Mi cuenta</h1>
+<section>
+  <h2>Datos</h2>
+  <form method="post" action="/cuenta/nombre" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Correo
+      <input type="email" value="{{ profile.email }}" readonly aria-readonly="true">
+    </label>
+    <label>Nombre
+      <input type="text" name="display_name" required maxlength="100" value="{{ profile.display_name }}">
+    </label>
+    {% if name_error %}<p class="error" role="alert">{{ name_error }}</p>{% endif %}
+    <button type="submit">Guardar nombre</button>
+  </form>
+</section>
+<section>
+  <h2>Cambiar la contraseña</h2>
+  <form method="post" action="/cuenta/contrasena" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Contraseña actual
+      <input type="password" name="current_password" required autocomplete="current-password">
+    </label>
+    <label>Contraseña nueva
+      <input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password">
+    </label>
+    <label>Repite la contraseña nueva
+      <input type="password" name="password_confirm" required autocomplete="new-password">
+    </label>
+    {% include "_password_help.html" %}
+    {% if password_error %}<p class="error" role="alert">{{ password_error }}</p>{% endif %}
+    <button type="submit">Cambiar contraseña</button>
+  </form>
+</section>
+<section>
+  <h2>Mis datos</h2>
+  <p><a href="/cuenta/exportar">Exportar mis datos</a> (fichero JSON)</p>
+  <p><a href="/cuenta/eliminar">Eliminar mi cuenta</a></p>
+</section>
+{% endblock %}

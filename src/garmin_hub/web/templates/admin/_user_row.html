@@ -1,0 +1,40 @@
+<tr id="user-{{ u.user_id }}">
+  <td>{{ u.display_name }}</td>
+  <td>{{ u.email }}</td>
+  <td>{{ ROLE_LABELS[u.role] }}</td>
+  <td>{{ STATUS_LABELS[u.status] }}</td>
+  <td>{{ u.created_at | dt }}</td>
+  <td>{{ u.last_login_at | dt }}</td>
+  <td>
+    <div class="actions">
+    {% if u.status == "active" and u.user_id != user.user_id %}
+      <form method="post" action="/admin/usuarios/{{ u.user_id }}/desactivar"
+            hx-post="/admin/usuarios/{{ u.user_id }}/desactivar" hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="danger">Desactivar</button>
+      </form>
+      <form method="post" action="/admin/usuarios/{{ u.user_id }}/restablecimiento"
+            hx-post="/admin/usuarios/{{ u.user_id }}/restablecimiento" hx-target="#admin-result" hx-swap="innerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Generar código de restablecimiento</button>
+      </form>
+    {% elif u.status == "deactivated" %}
+      <form method="post" action="/admin/usuarios/{{ u.user_id }}/reactivar"
+            hx-post="/admin/usuarios/{{ u.user_id }}/reactivar" hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Reactivar</button>
+      </form>
+      {% if u.role == "user" %}
+      <a href="/admin/usuarios/{{ u.user_id }}/eliminar">Eliminar</a>
+      {% endif %}
+    {% elif u.status == "pending_deletion" %}
+      <form method="post" action="/admin/usuarios/{{ u.user_id }}/reintentar-borrado"
+            hx-post="/admin/usuarios/{{ u.user_id }}/reintentar-borrado" hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Reintentar borrado</button>
+      </form>
+    {% endif %}
+    </div>
+    {% if row_error %}<p class="error" role="alert">{{ row_error }}</p>{% endif %}
+  </td>
+</tr>

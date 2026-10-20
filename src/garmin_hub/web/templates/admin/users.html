@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<h1>Usuarios</h1>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Alta</th><th>Último acceso</th><th>Acciones</th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}{% include "admin/_user_row.html" %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+<div id="admin-result">{% if code %}{% include "admin/_reset_created.html" %}{% endif %}</div>
+{% endblock %}

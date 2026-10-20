@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Alta{% endblock %}
+{% block content %}
+<h1>Alta en garmin-hub</h1>
+<p>Introduce el código de invitación que te ha dado el administrador.</p>
+<form method="post" action="/alta/codigo" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Código de invitación
+    <input type="text" name="code" required autocomplete="off" autocapitalize="characters"
+           placeholder="XXXX-XXXX-XXXX-XXXX-XXXX">
+  </label>
+  <button type="submit">Continuar</button>
+</form>
+<p><a href="/login">Ya tengo cuenta</a></p>
+{% endblock %}

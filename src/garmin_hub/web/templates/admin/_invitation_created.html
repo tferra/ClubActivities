@@ -1,0 +1,7 @@
+{% include "admin/_invitation_code.html" %}
+{# <template> evita que el navegador descarte el <tbody> fuera de una tabla (htmx 2, OOB). #}
+<template>
+  <tbody id="invitation-rows" hx-swap-oob="true">
+    {% include "admin/_invitation_rows.html" %}
+  </tbody>
+</template>

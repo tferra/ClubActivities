@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Alta{% endblock %}
+{% block content %}
+<h1>Completa tu alta</h1>
+<form method="post" action="/alta" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="code" value="{{ code }}">
+  <label>Correo
+    <input type="email" value="{{ email }}" readonly aria-readonly="true">
+  </label>
+  <label>Nombre
+    <input type="text" name="display_name" required maxlength="100" value="{{ display_name or '' }}">
+  </label>
+  <label>Contraseña
+    <input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password">
+  </label>
+  <label>Repite la contraseña
+    <input type="password" name="password_confirm" required autocomplete="new-password">
+  </label>
+  {% include "_password_help.html" %}
+  <button type="submit">Darme de alta</button>
+</form>
+{% endblock %}

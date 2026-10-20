@@ -1,0 +1,67 @@
+[project]
+name = "garmin-hub"
+version = "0.1.0"
+description = "Aplicación web multiusuario que descarga y visualiza datos de cuentas Garmin Connect."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.18",
+    "typer>=0.15",
+    "sqlalchemy>=2.0",
+    "pyodbc>=5.2",
+    "alembic>=1.14",
+    "pydantic-settings>=2.6",
+    "python-dotenv>=1.0",
+    "anyio>=4.6",
+    "argon2-cffi>=23.1",
+]
+
+[project.scripts]
+garmin-hub = "garmin_hub.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/garmin_hub"]
+artifacts = [
+    "src/garmin_hub/web/templates/**",
+    "src/garmin_hub/web/static/**",
+    "src/garmin_hub/security/data/*.gz",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = [".specify", ".claude"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "SIM", "RUF", "ANN"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN", "S105", "S106"]
+"src/garmin_hub/db/migrations/**" = ["ANN"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: requiere SQL Server desechable en GARMIN_HUB_TEST_DB_URL",
+    "live: usa Garmin real; nunca se ejecuta por defecto",
+    "mssql: requiere SQL Server (se omite en la comprobación local con SQLite)",
+]
+addopts = "-m 'not live and not integration' --strict-markers"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]

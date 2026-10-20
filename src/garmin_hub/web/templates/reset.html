@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Restablecer contraseña{% endblock %}
+{% block content %}
+<h1>Restablecer la contraseña</h1>
+<p>Introduce tu correo, el código que te ha dado el administrador y una contraseña nueva.</p>
+<form method="post" action="/restablecer" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Correo
+    <input type="email" name="email" required autocomplete="username" value="{{ email or '' }}">
+  </label>
+  <label>Código de restablecimiento
+    <input type="text" name="code" required autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX">
+  </label>
+  <label>Contraseña nueva
+    <input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password">
+  </label>
+  <label>Repite la contraseña nueva
+    <input type="password" name="password_confirm" required autocomplete="new-password">
+  </label>
+  {% include "_password_help.html" %}
+  <button type="submit">Restablecer</button>
+</form>
+<p><a href="/login">Volver a iniciar sesión</a></p>
+{% endblock %}

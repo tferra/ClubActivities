@@ -26,3 +26,7 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Logs and raw Garmin files
+logs/
+data/raw/

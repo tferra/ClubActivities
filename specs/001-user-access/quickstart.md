@@ -43,18 +43,18 @@ GARMIN_HUB_PUBLIC_URL=http://localhost:8000
 
 | # | Paso | Resultado esperado |
 |---|------|--------------------|
-| 0 | Sin definir `GARMIN_HUB_SESSION_SECRET` (ni en el entorno ni en `.env`), ejecutar `uv run garmin-hub web serve` | Termina con código 2 y lista el nombre del secreto que falta, nunca un valor (FR-001) |
-| 1 | `uv run garmin-hub db upgrade`, dos veces | La primera vez crea el esquema `gh`; la segunda no hace nada. Las dos devuelven 0 |
-| 2 | `uv run garmin-hub admin create --email admin@club.test --name Admin` e introducir la contraseña dos veces | Escribe `Administrador creado: <uuid>`; la contraseña no se muestra (US1) |
+| 0 | Sin definir `GARMIN_HUB_SESSION_SECRET` (ni en el entorno ni en `.env`), ejecutar `uv run garmin-hub web serve` | Termina con código 2 y escribe `Error: faltan secretos obligatorios: GARMIN_HUB_SESSION_SECRET.` y `Defínelos como variables de entorno (ver .env.example).`, nunca un valor (FR-001). Sin `GARMIN_HUB_PUBLIC_URL`: código 2 y `Error: falta configuración obligatoria: GARMIN_HUB_PUBLIC_URL.` |
+| 1 | `uv run garmin-hub db upgrade`, dos veces | La primera vez crea el esquema `gh`; la segunda no hace nada. Las dos devuelven 0 y escriben `Base de datos actualizada a la revisión 0001_user_access.` Si la base no responde: código 3 y `Error: no se puede conectar con la base de datos.` |
+| 2 | `uv run garmin-hub admin create --email admin@club.test --name Admin` e introducir la contraseña en `Contraseña:` y `Repite la contraseña:` | Escribe `Administrador creado: <uuid>`; ni el correo ni la contraseña se muestran (US1) |
 | 3 | `uv run garmin-hub web serve` y abrir http://localhost:8000 | Redirige a `/login` |
-| 4 | Entrar como administrador, ir a Invitaciones y crear una para `ana@club.test` | Muestra el código una sola vez; la invitación aparece como "Pendiente" (US2) |
+| 4 | Entrar como administrador, ir a Invitaciones y crear una para `ana@club.test` | Muestra el código (`XXXX-XXXX-XXXX-XXXX-XXXX`) una sola vez con el aviso "Copia este código ahora; no se volverá a mostrar."; la tabla se actualiza sin recargar y la invitación aparece como "Pendiente" (US2) |
 | 5 | En otra ventana privada, ir a `/alta` y poner el código | El correo `ana@club.test` aparece fijo; tras poner nombre y contraseña se entra en la aplicación (US3; menos de 2 minutos, SC-001) |
 | 6 | Repetir `/alta` con el mismo código | "El código no es válido o ha caducado." (SC-002) |
 | 7 | Como Ana, fallar 5 veces la contraseña y luego poner la correcta | La sexta vez se rechaza con el mensaje genérico; desde otro origen sí entra (FR-030) |
 | 8 | Como Ana, cambiar el nombre y la contraseña, y descargar "Exportar mis datos" | La otra sesión de Ana queda cerrada; el JSON descargado contiene su perfil y sus eventos de auditoría, sin la credencial (US5) |
 | 9 | Como administrador, desactivar a Ana con su sesión abierta | La siguiente petición de Ana redirige a `/login` y no puede volver a entrar (SC-003) |
-| 10 | Reactivar a Ana, generar un código de restablecimiento y usarlo en `/restablecer` | La contraseña nueva funciona y la antigua no (US8) |
-| 11 | Como Ana, `/cuenta/eliminar` con contraseña y `ELIMINAR` | Vuelve a `/login`; el inicio de sesión con su correo se comporta como el de un correo inexistente (US7) |
+| 10 | Reactivar a Ana, generar un código de restablecimiento ("Generar código de restablecimiento" en su fila) y usarlo en `/restablecer` | Redirige a `/login` con "Contraseña restablecida. Ya puedes iniciar sesión."; la contraseña nueva funciona y la antigua no (US8) |
+| 11 | Como Ana, `/cuenta/eliminar` con contraseña y `ELIMINAR` | Vuelve a `/login` con "Tu usuario y todos sus datos se han eliminado."; el inicio de sesión con su correo se comporta como el de un correo inexistente (US7) |
 | 12 | Como administrador, intentar desactivarse a sí mismo | Se rechaza (FR-027) |
 
 ## Tests
@@ -67,6 +67,11 @@ GARMIN_HUB_TEST_DB_URL=... uv run pytest -m integration
 ```
 
 En PowerShell: `$env:GARMIN_HUB_TEST_DB_URL="..."; uv run pytest -m integration`.
+
+Comprobación rápida sin SQL Server: `GARMIN_HUB_TEST_DB_URL=sqlite:// uv run pytest -m integration`.
+Omite los tests marcados `mssql` (migración 0001, trigger de auditoría, concurrencia de alta y del
+último administrador y contrato CLI con base de datos). No sustituye la validación contra SQL
+Server.
 
 Tests de integración clave:
 

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Invitaciones{% endblock %}
+{% block content %}
+<h1>Invitaciones</h1>
+<section>
+  <h2>Nueva invitación</h2>
+  <form method="post" action="/admin/invitaciones" class="stack"
+        hx-post="/admin/invitaciones" hx-target="#invite-result" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Correo de la persona invitada
+      <input type="email" name="email" required maxlength="254" value="{{ form.email if form else '' }}">
+    </label>
+    <label>Nota (opcional)
+      <input type="text" name="note" maxlength="200" value="{{ form.note if form else '' }}">
+    </label>
+    <label>Caducidad en días (opcional, de 1 a 30)
+      <input type="number" name="ttl_days" min="1" max="30">
+    </label>
+    <button type="submit">Generar invitación</button>
+  </form>
+  <div id="invite-result">
+    {% if code %}{% include "admin/_invitation_code.html" %}{% endif %}
+    {% if form_error %}<p class="error" role="alert">{{ form_error }}</p>{% endif %}
+  </div>
+</section>
+<section>
+  <h2>Listado</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Correo</th><th>Estado</th><th>Nota</th><th>Creada</th><th>Caduca</th><th>Usada por</th><th></th></tr>
+      </thead>
+      <tbody id="invitation-rows">
+        {% include "admin/_invitation_rows.html" %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

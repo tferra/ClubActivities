@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Eliminar usuario{% endblock %}
+{% block content %}
+<h1>Eliminar usuario</h1>
+{% if target %}
+<p>Vas a eliminar a <strong>{{ target.display_name }}</strong> y todos sus datos: cuentas Garmin,
+datos descargados, ficheros crudos, consentimientos y membresías. Esta acción no se puede
+deshacer y quedará registrada en la auditoría.</p>
+<form method="post" action="/admin/usuarios/{{ target.user_id }}/eliminar" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Escribe el correo del usuario para confirmar
+    <input type="email" name="confirmation_email" required autocomplete="off">
+  </label>
+  <button type="submit" class="danger">Eliminar usuario</button>
+</form>
+{% endif %}
+<p><a href="/admin/usuarios">Volver a usuarios</a></p>
+{% endblock %}

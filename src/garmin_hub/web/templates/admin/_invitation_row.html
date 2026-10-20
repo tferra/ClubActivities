@@ -1,0 +1,17 @@
+<tr id="inv-{{ inv.invitation_id }}">
+  <td>{{ inv.email }}</td>
+  <td>{{ inv.status_label }}</td>
+  <td>{{ inv.note or "" }}</td>
+  <td>{{ inv.created_at | dt }}</td>
+  <td>{{ inv.expires_at | dt }}</td>
+  <td>{{ inv.used_by_name or "" }}</td>
+  <td>
+    {% if inv.is_pending %}
+    <form method="post" action="/admin/invitaciones/{{ inv.invitation_id }}/revocar"
+          hx-post="/admin/invitaciones/{{ inv.invitation_id }}/revocar" hx-target="closest tr" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="danger">Revocar</button>
+    </form>
+    {% endif %}
+  </td>
+</tr>
