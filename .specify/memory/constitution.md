@@ -46,6 +46,11 @@ seguro y observable.
   limpiamente guardando su checkpoint.
 - Todo acceso a Garmin DEBE pasar por la interfaz propia `GarminClient`. La librería no oficial
   solo se importa dentro de su implementación, de modo que pueda sustituirse.
+- El inicio de sesión interactivo en Garmin (credenciales y MFA) cuenta como una única operación
+  con estas reglas:
+  - no se reintenta automáticamente salvo hasta un límite configurable, que por defecto es 0;
+  - si la implementación prueba varias estrategias de login, DEBE pausar con jitter entre ellas,
+    detenerse ante el primer 429 y respetar un tiempo total máximo configurable.
 
 **Justificación**: evitar bloqueos de cuentas y depender lo menos posible de una librería no
 oficial.
@@ -102,6 +107,13 @@ supresión (RGPD).
 ### VII. Portabilidad
 
 - Los procesos web y worker DEBEN ser sin estado; el estado vive en SQL Server y en `RawStore`.
+- **Excepción**: el estado efímero de un handshake de autenticación con un tercero (por ejemplo, el
+  paso MFA del login de Garmin) PUEDE vivir en la memoria del proceso web si cumple todo esto:
+  - dura como máximo 10 minutos;
+  - no contiene contraseñas ni otros secretos de larga duración;
+  - perderlo solo obliga al usuario a repetir la operación;
+  - el plan de la feature lo documenta y el despliegue garantiza un único proceso web o afinidad
+    de sesión.
 - Toda la configuración DEBE llegar por variables de entorno (12 factores).
 - La aplicación DEBE poder ejecutarse en imágenes Docker.
 - Las interfaces `SecretProvider`, `RawStore` y `GarminClient` son los puntos de sustitución para
@@ -217,4 +229,4 @@ internacional.
 - La conformidad se revisa en `/speckit-plan` (Constitution Check) y en `/speckit-analyze`. Las
   violaciones de un principio con DEBE son bloqueantes.
 
-**Version**: 1.0.1 | **Ratified**: 2026-10-14 | **Last Amended**: 2026-10-19
+**Version**: 1.1.0 | **Ratified**: 2026-10-14 | **Last Amended**: 2026-10-20
