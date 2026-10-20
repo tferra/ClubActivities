@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Desvincular cuenta Garmin{% endblock %}
+{% block content %}
+<h1>Desvincular «{{ account.alias }}»</h1>
+<p>Al desvincular la cuenta, garmin-hub deja de descargar sus datos y borra el acceso guardado.
+Elige qué hacer con los datos ya descargados:</p>
+{% if account.status in ("valid", "reauth_required", "error") %}
+<form method="post" action="/cuentas-garmin/{{ account.garmin_account_id }}/desvincular" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label><span><input type="radio" name="mode" value="keep" required> Conservar datos</span></label>
+  <p class="hint">Los datos siguen disponibles para ti y la cuenta aparece como «Desvinculada».
+  Si conservas los datos, los entrenadores a los que hayas dado consentimiento seguirán viéndolos
+  mientras el consentimiento siga vigente. Puedes borrarlos más tarde o volver a vincular la
+  cuenta.</p>
+  <label><span><input type="radio" name="mode" value="delete" required> Borrar datos</span></label>
+  <p class="hint">Se borran la cuenta y todos sus datos. No se puede deshacer.</p>
+  <label>Escribe el alias de la cuenta («{{ account.alias }}») para confirmar
+    <input type="text" name="confirmation" required autocomplete="off">
+  </label>
+  <button type="submit" class="danger">Desvincular</button>
+</form>
+{% endif %}
+<p><a href="/cuentas-garmin">Cancelar</a></p>
+{% endblock %}

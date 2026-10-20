@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Código de verificación{% endblock %}
+{% block content %}
+<h1>Código de verificación de Garmin</h1>
+<p>Garmin te ha enviado un código de verificación. Escríbelo para terminar de
+{% if purpose == "reauth" %}volver a autenticar la cuenta{% else %}vincular la cuenta{% endif %}.</p>
+<p class="hint">Tiempo restante: {{ remaining }} minutos. Si caduca, tendrás que volver a empezar.</p>
+<form method="post" action="/cuentas-garmin/mfa" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="attempt_id" value="{{ attempt_id }}">
+  <label>Código
+    <input type="text" name="mfa_code" required inputmode="numeric" autocomplete="one-time-code">
+  </label>
+  <button type="submit">Enviar código</button>
+</form>
+<form method="post" action="/cuentas-garmin/mfa/cancelar" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="attempt_id" value="{{ attempt_id }}">
+  <button type="submit" class="link">Cancelar</button>
+</form>
+{% endblock %}

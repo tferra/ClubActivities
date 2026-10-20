@@ -57,6 +57,27 @@ def test_all_pages_are_spanish() -> None:
     assert '<html lang="es">' in base
     for path in Path(TEMPLATES_DIR).rglob("*.html"):
         text = path.read_text(encoding="utf-8")
-        is_fragment = path.name.startswith("_")
+        # Los textos versionados del aviso de datos (feature 002) se incluyen en notice.html.
+        is_fragment = path.name.startswith("_") or path.name.startswith("notice_v")
         if path.name != "base.html" and not is_fragment:
             assert text.startswith('{% extends "base.html" %}'), path.name
+
+
+def test_garmin_messages_spanish_without_library_text() -> None:
+    from garmin_hub.garmin_accounts import errors
+    from garmin_hub.web.templating import GARMIN_STATUS_LABELS
+
+    messages = {n: getattr(errors, n) for n in dir(errors) if n.startswith("MSG_")}
+    assert len(messages) >= 25
+    technical = ("garminconnect", "curl", "http", "429", "403", "token", "exception", "error:")
+    for name, message in messages.items():
+        assert message[0].isupper() and message.rstrip().endswith((".", "»")), name
+        assert not any(word in message.lower() for word in technical), name
+    assert set(GARMIN_STATUS_LABELS.values()) == {
+        "Válida",
+        "Requiere reautenticación",
+        "Error",
+        "Desvinculada (datos conservados)",
+        "Borrando datos… (no se pudo completar)",
+    }
+    assert errors.message_for(errors.TokenRejected()) == errors.MSG_TOKEN_REJECTED

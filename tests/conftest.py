@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 
 from garmin_hub.config import Settings
 from garmin_hub.keys import DerivedKeys, derive_keys
@@ -13,6 +14,8 @@ from garmin_hub.secrets import Secrets
 
 TEST_SESSION_SECRET = b"test-session-secret-0123456789-abcdefghijklmnop"
 TEST_DB_URL = "mssql+pyodbc://tester:db-secret-pw@localhost:1433/garmin?driver=X"
+# Clave de test generada en cada ejecución; nunca se guarda.
+TEST_MASTER_KEYS = f"1:{Fernet.generate_key().decode()}"
 
 
 @pytest.fixture(autouse=True)
@@ -30,18 +33,24 @@ def _restore_loggers() -> Iterator[None]:
     """`configure_logging` (CLI) cambia loggers globales; se restauran tras cada test."""
     import logging
 
-    names = ("garmin_hub", "uvicorn.error", "uvicorn")
+    names = ("garmin_hub", "uvicorn.error", "uvicorn", "garminconnect", "curl_cffi")
     saved = {
-        n: (list(logging.getLogger(n).handlers), logging.getLogger(n).propagate) for n in names
+        n: (
+            list(logging.getLogger(n).handlers),
+            logging.getLogger(n).propagate,
+            logging.getLogger(n).level,
+        )
+        for n in names
     }
     yield
-    for name, (handlers, propagate) in saved.items():
+    for name, (handlers, propagate, level) in saved.items():
         logger = logging.getLogger(name)
         for handler in logger.handlers:
             if handler not in handlers:
                 handler.close()
         logger.handlers = handlers
         logger.propagate = propagate
+        logger.setLevel(level)
 
 
 @pytest.fixture
@@ -51,7 +60,9 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def secrets() -> Secrets:
-    return Secrets(db_url=TEST_DB_URL, session_secret=TEST_SESSION_SECRET)
+    return Secrets(
+        db_url=TEST_DB_URL, session_secret=TEST_SESSION_SECRET, master_keys=TEST_MASTER_KEYS
+    )
 
 
 @pytest.fixture

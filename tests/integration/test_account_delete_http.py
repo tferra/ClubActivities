@@ -104,7 +104,11 @@ def test_delete_ok(
     assert audit_rows("user.deletion_requested")[0]["details"] == {"by": "self"}
     deleted = audit_rows("user.deleted")[0]
     assert deleted["details"]["by"] == "self"
-    assert deleted["details"]["steps"] == ["delete_reset_codes", "null_invitation_refs"]
+    assert deleted["details"]["steps"] == [
+        "garmin_accounts",
+        "delete_reset_codes",
+        "null_invitation_refs",
+    ]
     other = make_client("192.0.2.77")
     a = other.post(
         "/login",

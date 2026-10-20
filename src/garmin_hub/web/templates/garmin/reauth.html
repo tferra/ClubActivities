@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Reautenticar cuenta Garmin{% endblock %}
+{% block content %}
+<h1>Reautenticar «{{ account.alias }}»</h1>
+<p>Introduce las credenciales de la misma cuenta Garmin que vinculaste como
+«{{ account.alias }}». Se conservan su alias y sus datos.</p>
+<p class="hint">La contraseña de Garmin no se guarda: solo se usa para iniciar sesión en Garmin
+en este momento.</p>
+{% if account.status in ("valid", "reauth_required", "error") %}
+<form method="post" action="/cuentas-garmin/{{ account.garmin_account_id }}/reautenticar" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Correo de Garmin
+    <input type="email" name="garmin_email" required autocomplete="off">
+  </label>
+  <label>Contraseña de Garmin
+    <input type="password" name="garmin_password" required autocomplete="new-password">
+  </label>
+  <button type="submit">Reautenticar</button>
+</form>
+{% endif %}
+<p><a href="/cuentas-garmin">Volver a mis cuentas Garmin</a></p>
+{% endblock %}

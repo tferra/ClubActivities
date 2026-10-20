@@ -118,3 +118,39 @@ def test_access_log_middleware(handler) -> None:
     line = handler.lines()[-1]
     assert "203.0.113.57" not in line
     assert "code=" not in line and "a@b.test" not in line
+
+
+THIRD_PARTY_SENTINELS = [
+    "ana.garmin@example.test",
+    "pw-CENTINELA-123",
+    "eyJ-TOKEN-CENTINELA",
+    "987654321",
+]
+
+
+@pytest.mark.parametrize("name", ["garminconnect", "garminconnect.client", "curl_cffi"])
+def test_third_party_logs_are_scrubbed(settings, name) -> None:
+    from garmin_hub.logging_setup import THIRD_PARTY_MESSAGE, configure_logging
+
+    configure_logging(settings)
+    assert logging.getLogger("garminconnect").level == logging.ERROR
+    assert logging.getLogger("curl_cffi").level == logging.ERROR
+    email, password, token, profile_id = THIRD_PARTY_SENTINELS
+    logger = logging.getLogger(name)
+    logger.warning("aviso con %s", email)  # por debajo de ERROR: se descarta
+    try:
+        raise RuntimeError(f"fallo {token} profileId={profile_id}")
+    except RuntimeError:
+        logger.error(
+            "login %s:%s profileId=" + profile_id, email, password, exc_info=True, stack_info=True
+        )
+    for handler in logging.getLogger("garmin_hub").handlers:
+        handler.flush()
+    content = (settings.log_dir / "garmin-hub.log").read_text(encoding="utf-8")
+    for sentinel in THIRD_PARTY_SENTINELS:
+        assert sentinel not in content
+    lines = [json.loads(line) for line in content.splitlines() if line.strip()]
+    assert any(
+        line["msg"] == THIRD_PARTY_MESSAGE and line["logger"] == name and line["level"] == "ERROR"
+        for line in lines
+    )

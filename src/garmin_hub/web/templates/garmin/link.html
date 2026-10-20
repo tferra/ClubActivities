@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Vincular cuenta Garmin{% endblock %}
+{% block content %}
+<h1>Vincular una cuenta Garmin</h1>
+<p>Escribe un alias para reconocer la cuenta y el correo y la contraseña con los que entras en
+Garmin Connect. La cuenta debe ser tuya.</p>
+<p class="hint">La contraseña de Garmin no se guarda: solo se usa para iniciar sesión en Garmin
+en este momento. Tampoco se guarda el correo. garmin-hub guarda el acceso que concede Garmin,
+cifrado.</p>
+<form method="post" action="/cuentas-garmin/vincular" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Alias (entre 1 y 50 caracteres)
+    <input type="text" name="alias" required maxlength="50" autocomplete="off" value="{{ alias or '' }}">
+  </label>
+  <label>Correo de Garmin
+    <input type="email" name="garmin_email" required autocomplete="off">
+  </label>
+  <label>Contraseña de Garmin
+    <input type="password" name="garmin_password" required autocomplete="new-password">
+  </label>
+  <button type="submit">Vincular</button>
+</form>
+<p><a href="/cuentas-garmin">Volver a mis cuentas Garmin</a></p>
+{% endblock %}

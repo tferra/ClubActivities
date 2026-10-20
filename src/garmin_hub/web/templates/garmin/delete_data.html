@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Borrar datos de la cuenta Garmin{% endblock %}
+{% block content %}
+<h1>Borrar los datos de «{{ account.alias }}»</h1>
+<p>Se borran la cuenta desvinculada y todos sus datos. No se puede deshacer.</p>
+{% if account.status == "unlinked" %}
+<form method="post" action="/cuentas-garmin/{{ account.garmin_account_id }}/borrar-datos" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Escribe el alias de la cuenta («{{ account.alias }}») para confirmar
+    <input type="text" name="confirmation" required autocomplete="off">
+  </label>
+  <button type="submit" class="danger">Borrar definitivamente</button>
+</form>
+{% endif %}
+<p><a href="/cuentas-garmin">Cancelar</a></p>
+{% endblock %}

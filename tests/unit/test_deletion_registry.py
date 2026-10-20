@@ -34,5 +34,7 @@ def test_reports_first_failure(isolated_registry) -> None:
 
 
 def test_builtin_steps_registered() -> None:
+    import garmin_hub.garmin_accounts.deletion  # noqa: F401 - registra el paso de la feature 002
+
     names = [s.name for s in deletion.registered_steps()]
-    assert names == ["delete_reset_codes", "null_invitation_refs"]
+    assert names == ["garmin_accounts", "delete_reset_codes", "null_invitation_refs"]

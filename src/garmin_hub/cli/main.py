@@ -21,9 +21,11 @@ app = typer.Typer(
 db_app = typer.Typer(help="Base de datos.", no_args_is_help=True)
 admin_app = typer.Typer(help="Administradores.", no_args_is_help=True)
 web_app = typer.Typer(help="Servidor web.", no_args_is_help=True)
+key_app = typer.Typer(help="Claves de cifrado de los accesos a Garmin.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
 app.add_typer(admin_app, name="admin")
 app.add_typer(web_app, name="web")
+app.add_typer(key_app, name="key")
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,39 @@ def web_serve(
         from garmin_hub.web.app import create_app
 
         uvicorn.run(create_app(runtime.settings, runtime.secrets, engine=engine), **options)
+
+
+@key_app.command("generate")
+def key_generate() -> None:
+    """Imprime una clave nueva para GARMIN_HUB_MASTER_KEYS (no necesita secretos)."""
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode()
+    typer.echo(key)
+    typer.echo(
+        f"Añádela a GARMIN_HUB_MASTER_KEYS con una versión mayor que la actual, por ejemplo 2:{key}"
+    )
+
+
+@key_app.command("reencrypt")
+def key_reencrypt() -> None:
+    """Vuelve a cifrar con la clave vigente los accesos que usan versiones antiguas."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from garmin_hub.clock import utc_now
+    from garmin_hub.garmin_accounts.rotation import reencrypt_tokens
+    from garmin_hub.security.token_cipher import TokenCipher, parse_master_keys
+
+    runtime = bootstrap()
+    engine = _engine_at_head(runtime)
+    cipher = TokenCipher(parse_master_keys(runtime.secrets.master_keys))
+    try:
+        done, pending = reencrypt_tokens(engine, cipher, utc_now())
+    except SQLAlchemyError:
+        raise _fail("no se puede conectar con la base de datos.", EXIT_DATABASE) from None
+    typer.echo(f"Accesos recifrados: {done}. Pendientes con versiones no configuradas: {pending}.")
+    if pending:
+        raise typer.Exit(EXIT_VALIDATION)
 
 
 def main() -> None:  # pragma: no cover

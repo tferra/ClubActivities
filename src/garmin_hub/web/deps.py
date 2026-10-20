@@ -19,6 +19,7 @@ __all__ = [
     "request_ip_prefix",
     "require_admin",
     "require_csrf",
+    "require_regular_user",
     "require_user",
     "transaction",
 ]
@@ -71,5 +72,12 @@ def require_user(request: Request) -> SessionUser:
 
 def require_admin(user: SessionUser = Depends(require_user)) -> SessionUser:  # noqa: B008
     if not user.is_admin:
+        raise HTTPException(status_code=404)
+    return user
+
+
+def require_regular_user(user: SessionUser = Depends(require_user)) -> SessionUser:  # noqa: B008
+    """Solo usuarios normales: un administrador recibe 404 (feature 002, FR-009 y FR-015)."""
+    if user.is_admin:
         raise HTTPException(status_code=404)
     return user

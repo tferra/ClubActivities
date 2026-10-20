@@ -7,6 +7,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
+from garmin_hub.garmin_accounts.errors import ERROR_CODE_MESSAGES
 from garmin_hub.security.csrf import ANON_COOKIE, new_anon_pair, session_token
 from garmin_hub.security.csrf import anon_token as _anon_token
 from garmin_hub.security.sessions import COOKIE_ATTRS
@@ -19,6 +20,14 @@ STATUS_LABELS = {
     "pending_deletion": "Borrado pendiente",
 }
 ROLE_LABELS = {"user": "Usuario", "admin": "Administrador"}
+# Etiquetas de estado de las cuentas Garmin (feature 002, contracts/http.md).
+GARMIN_STATUS_LABELS = {
+    "valid": "Válida",
+    "reauth_required": "Requiere reautenticación",
+    "error": "Error",
+    "unlinked": "Desvinculada (datos conservados)",
+    "deleting": "Borrando datos… (no se pudo completar)",
+}
 
 
 def build_templates() -> Jinja2Templates:
@@ -26,8 +35,13 @@ def build_templates() -> Jinja2Templates:
     templates.env.filters["dt"] = lambda value: (
         value.strftime("%Y-%m-%d %H:%M UTC") if value else "—"
     )
+    templates.env.filters["dt_or_never"] = lambda value: (
+        value.strftime("%Y-%m-%d %H:%M UTC") if value else "Nunca"
+    )
     templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
     templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+    templates.env.globals["GARMIN_STATUS_LABELS"] = GARMIN_STATUS_LABELS
+    templates.env.globals["GARMIN_ERROR_MESSAGES"] = ERROR_CODE_MESSAGES
     return templates
 
 

@@ -28,7 +28,13 @@ def test_export(client, make_user, login_as, audit_rows, monkeypatch) -> None:
     for forbidden in ("password_hash", "argon2", "session_hash", "code_hash"):
         assert forbidden not in r.text
     event = audit_rows("user.data_exported")[0]
-    assert event["details"]["sections"] == ["profile", "audit_events", "extra"]
+    assert event["details"]["sections"] == [
+        "profile",
+        "audit_events",
+        "garmin_accounts",
+        "data_notice_acceptances",
+        "extra",
+    ]
 
 
 def test_duplicate_section_rejected(monkeypatch) -> None:

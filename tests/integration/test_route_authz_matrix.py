@@ -10,6 +10,8 @@ from garmin_hub.web.app import route_modules
 
 pytestmark = pytest.mark.integration
 
+# Las rutas de la feature 002 tienen su propia matriz (test_garmin_authz_matrix.py).
+GARMIN_PREFIX = "/cuentas-garmin"
 PUBLIC = {"/login", "/logout", "/alta", "/alta/codigo", "/restablecer", "/healthz"}
 USER_ROUTES = [
     ("GET", "/"),
@@ -56,6 +58,7 @@ def test_contract_covers_all_routes() -> None:
     actual = {
         r.path.replace("{user_id}", "{uid}").replace("{invitation_id}", "{iid}")
         for r in module_routes()
+        if not r.path.startswith(GARMIN_PREFIX)
     } | {"/healthz"}
     assert actual == declared
 
@@ -63,7 +66,7 @@ def test_contract_covers_all_routes() -> None:
 def test_every_unsafe_route_requires_csrf() -> None:
     routes = module_routes()
     unsafe = [r for r in routes if r.methods - {"GET", "HEAD"}]
-    assert len(unsafe) == len(ALL_POST)
+    assert len([r for r in unsafe if not r.path.startswith(GARMIN_PREFIX)]) == len(ALL_POST)
     for route in unsafe:
         assert any(d.dependency is require_csrf for d in route.dependencies), route.path
 

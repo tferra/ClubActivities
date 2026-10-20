@@ -1,4 +1,4 @@
-"""Tablas de la feature 001 (data-model.md) con SQLAlchemy Core.
+"""Tablas de las features 001 y 002 (data-model.md) con SQLAlchemy Core.
 
 Las tablas se definen sin schema; el engine traduce `None` al schema configurado
 (`schema_translate_map`), así el mismo código sirve para `gh` y para los schemas de test.
@@ -18,14 +18,16 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Table,
     TypeDecorator,
     Unicode,
     Uuid,
+    text,
 )
-from sqlalchemy.dialects.mssql import DATETIME2
+from sqlalchemy.dialects.mssql import DATETIME2, VARBINARY
 from sqlalchemy.types import TypeEngine
 
 
@@ -171,3 +173,99 @@ audit_event = Table(
 )
 Index("IX_audit_event_occurred", audit_event.c.occurred_at.desc())
 Index("IX_audit_event_subject", audit_event.c.subject_user_id, audit_event.c.occurred_at)
+
+
+# --- Feature 002: cuentas Garmin -------------------------------------------------------------
+
+ACTIVE_STATUSES = ("valid", "reauth_required", "error")
+LIVE_STATUSES = (*ACTIVE_STATUSES, "unlinked")
+
+# Filtros literales de data-model.md (iguales en SQL Server y SQLite).
+ACTIVE_FILTER = "status IN ('valid', 'reauth_required', 'error')"
+LIVE_FILTER = "status IN ('valid', 'reauth_required', 'error', 'unlinked')"
+STATUS_FIELDS_CHECK = (
+    "((status = 'error' AND error_code IS NOT NULL) OR (status <> 'error' AND error_code IS NULL))"
+    " AND (status <> 'unlinked' OR unlinked_at IS NOT NULL)"
+    " AND (status <> 'deleting' OR deletion_requested_at IS NOT NULL)"
+)
+
+# VARBINARY(MAX) en SQL Server; BLOB en SQLite.
+VarBinaryMax = LargeBinary().with_variant(VARBINARY("max"), "mssql")
+
+garmin_account = Table(
+    "garmin_account",
+    metadata,
+    Column("garmin_account_id", Uuid, primary_key=True),
+    Column("user_id", Uuid, ForeignKey("app_user.user_id"), nullable=False),
+    Column("alias", Unicode(50), nullable=False),
+    Column("alias_key", Unicode(50), nullable=False),
+    Column("garmin_profile_id", BigInteger, nullable=False),
+    Column("status", String(20), nullable=False),
+    Column("error_code", String(32), nullable=True),
+    Column("linked_at", UtcDateTime, nullable=False),
+    Column("last_login_at", UtcDateTime, nullable=False),
+    Column("last_sync_at", UtcDateTime, nullable=True),
+    Column("last_checked_at", UtcDateTime, nullable=True),
+    Column("last_check_started_at", UtcDateTime, nullable=True),
+    Column("request_lease_until", UtcDateTime, nullable=True),
+    Column("unlinked_at", UtcDateTime, nullable=True),
+    Column("deletion_requested_at", UtcDateTime, nullable=True),
+    Column("created_at", UtcDateTime, nullable=False),
+    Column("updated_at", UtcDateTime, nullable=False),
+    CheckConstraint(
+        "status IN ('valid', 'reauth_required', 'error', 'unlinked', 'deleting')",
+        name="CK_garmin_account_status",
+    ),
+    CheckConstraint(
+        "error_code IN ('token_undecryptable', 'identity_mismatch')",
+        name="CK_garmin_account_error_code",
+    ),
+    CheckConstraint(STATUS_FIELDS_CHECK, name="CK_garmin_account_status_fields"),
+)
+for _name, _columns, _filter in (
+    ("UX_garmin_account_profile_active", ("garmin_profile_id",), ACTIVE_FILTER),
+    ("UX_garmin_account_user_profile", ("user_id", "garmin_profile_id"), LIVE_FILTER),
+    ("UX_garmin_account_user_alias", ("user_id", "alias_key"), LIVE_FILTER),
+):
+    Index(
+        _name,
+        *(garmin_account.c[c] for c in _columns),
+        unique=True,
+        mssql_where=text(_filter),
+        sqlite_where=text(_filter),
+    )
+Index("IX_garmin_account_user", garmin_account.c.user_id, garmin_account.c.created_at)
+
+garmin_token = Table(
+    "garmin_token",
+    metadata,
+    Column(
+        "garmin_account_id",
+        Uuid,
+        ForeignKey("garmin_account.garmin_account_id"),
+        primary_key=True,
+    ),
+    Column("ciphertext", VarBinaryMax, nullable=False),
+    Column("key_version", Integer, nullable=False),
+    Column("issued_at", UtcDateTime, nullable=False),
+    Column("updated_at", UtcDateTime, nullable=False),
+    CheckConstraint("key_version > 0", name="CK_garmin_token_key_version"),
+)
+
+data_notice_acceptance = Table(
+    "data_notice_acceptance",
+    metadata,
+    Column("user_id", Uuid, ForeignKey("app_user.user_id"), primary_key=True),
+    Column("notice_version", Integer, primary_key=True),
+    Column("accepted_at", UtcDateTime, nullable=False),
+    CheckConstraint("notice_version > 0", name="CK_data_notice_acceptance_version"),
+)
+
+garmin_login_failure = Table(
+    "garmin_login_failure",
+    metadata,
+    Column("failure_id", BigIdentity, Identity(), primary_key=True),
+    Column("user_id", Uuid, ForeignKey("app_user.user_id"), nullable=False),
+    Column("failed_at", UtcDateTime, nullable=False),
+    Index("IX_garmin_login_failure_user", "user_id", "failed_at"),
+)

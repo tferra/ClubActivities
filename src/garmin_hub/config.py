@@ -7,10 +7,11 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
-from pydantic import ValidationError, field_validator
+from pydantic import ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PREFIX = "GARMIN_HUB_"
+CONFIG_HINTS = {"GARMIN_HUB_GARMIN_CLIENT": "fake solo en dev o test"}
 
 
 class MissingConfigError(Exception):
@@ -22,7 +23,9 @@ class MissingConfigError(Exception):
 
     @property
     def message(self) -> str:
-        return f"falta configuración obligatoria: {', '.join(self.names)}."
+        hints = [CONFIG_HINTS[name] for name in self.names if name in CONFIG_HINTS]
+        suffix = f" ({'; '.join(hints)})" if hints else ""
+        return f"falta configuración obligatoria: {', '.join(self.names)}{suffix}."
 
 
 def load_env_file(
@@ -64,6 +67,19 @@ class Settings(BaseSettings):
     login_email_soft_window_minutes: int = 60
     login_email_max_delay_seconds: float = 10
 
+    # Cuentas Garmin (feature 002, data-model.md "Configuración nueva").
+    garmin_client: Literal["garminconnect", "fake"] = "garminconnect"
+    garmin_mfa_ttl_minutes: int = 5
+    garmin_max_accounts: int = 10
+    garmin_login_max_failures: int = 5
+    garmin_login_window_minutes: int = 15
+    garmin_check_interval_seconds: int = 60
+    garmin_request_lease_seconds: int = 120
+    garmin_max_retries: int = 2
+    garmin_login_max_retries: int = 0
+    garmin_login_strategy_pause_seconds: float = 2
+    garmin_login_budget_seconds: float = 45
+
     @field_validator("public_url")
     @classmethod
     def _check_public_url(cls, value: str) -> str:
@@ -77,6 +93,14 @@ class Settings(BaseSettings):
     def _check_schema(cls, value: str) -> str:
         if not value.replace("_", "").isalnum():
             raise ValueError("solo letras, números y _")
+        return value
+
+    @field_validator("garmin_client")
+    @classmethod
+    def _check_garmin_client(cls, value: str, info: ValidationInfo) -> str:
+        # `env` se declara antes, así que ya está validado (research R18).
+        if value == "fake" and info.data.get("env", "prod") == "prod":
+            raise ValueError("el cliente falso solo se permite en dev o test")
         return value
 
     @property

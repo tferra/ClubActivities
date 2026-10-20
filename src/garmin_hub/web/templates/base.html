@@ -14,6 +14,9 @@
     {% if user %}
     <nav>
       <a href="/cuenta">Mi cuenta</a>
+      {% if user.role == "user" %}
+      <a href="/cuentas-garmin">Mis cuentas Garmin</a>
+      {% endif %}
       {% if user.is_admin %}
       <a href="/admin/usuarios">Usuarios</a>
       <a href="/admin/invitaciones">Invitaciones</a>

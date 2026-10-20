@@ -35,6 +35,8 @@ def test_no_plaintext_secrets(
                 for c in table.columns
                 if isinstance(c.type, (String, Unicode, BINARY, LargeBinary))
             ]
+            if not columns:
+                continue
             for row in conn.execute(select(*columns)):
                 for value in row:
                     if isinstance(value, bytes):

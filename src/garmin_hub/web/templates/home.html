@@ -2,5 +2,20 @@
 {% block title %}Inicio{% endblock %}
 {% block content %}
 <h1>Hola, {{ user.display_name }}</h1>
+{% if attention %}
+<section class="attention" role="status">
+  <p>Estas cuentas necesitan atención:</p>
+  <ul>
+    {% for a in attention %}
+    <li><a href="/cuentas-garmin/{{ a.garmin_account_id }}/reautenticar">«{{ a.alias }}» ({{ GARMIN_STATUS_LABELS[a.status] }})</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% if new_notice %}
+<p class="attention" role="status">Hay una versión nueva del aviso de datos.
+<a href="/cuentas-garmin/aviso">Léela y acéptala</a> antes de vincular o reautenticar
+cuentas.</p>
+{% endif %}
 <p>Bienvenido a garmin-hub. Aquí aparecerán tus cuentas Garmin y tus clubes.</p>
 {% endblock %}

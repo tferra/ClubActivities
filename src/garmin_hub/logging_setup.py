@@ -91,6 +91,29 @@ class RedactingFilter(logging.Filter):
         return True
 
 
+THIRD_PARTY_LOGGERS = ("garminconnect", "curl_cffi")
+THIRD_PARTY_MESSAGE = "third-party library error (details suppressed)"
+
+
+class ThirdPartyLogScrubber(logging.Filter):
+    """Sustituye el contenido de los logs de la librería de Garmin por un texto fijo (R17).
+
+    Solo se conservan el nombre del logger y el nivel: la librería puede incluir URL, cuerpos
+    de respuesta o datos de la cuenta en sus mensajes y excepciones.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = THIRD_PARTY_MESSAGE
+        record.args = None
+        record.exc_info = None
+        record.exc_text = None
+        record.stack_info = None
+        for key in list(vars(record)):
+            if key not in _STANDARD_ATTRS and not key.startswith("_"):
+                delattr(record, key)
+        return True
+
+
 class JsonFormatter(logging.Formatter):
     """Una línea JSON por evento."""
 
@@ -114,6 +137,24 @@ class JsonFormatter(logging.Formatter):
 _HANDLER_MARK = "_garmin_hub_handler"
 
 
+class _ScrubbingHandler(logging.Handler):
+    """Pasa los registros de terceros por `ThirdPartyLogScrubber` antes de los handlers comunes.
+
+    Los filtros de un logger no se aplican a los registros de sus hijos
+    (`garminconnect.client`), así que el filtro va en un handler propio.
+    """
+
+    def __init__(self, targets: list[logging.Handler]) -> None:
+        super().__init__()
+        self.targets = targets
+        self.addFilter(ThirdPartyLogScrubber())
+
+    def emit(self, record: logging.LogRecord) -> None:
+        for target in self.targets:
+            if record.levelno >= target.level:
+                target.handle(record)
+
+
 def configure_logging(settings: Settings) -> None:
     """stderr + fichero rotativo, ambos con `RedactingFilter`."""
     settings.log_dir.mkdir(parents=True, exist_ok=True)
@@ -131,11 +172,18 @@ def configure_logging(settings: Settings) -> None:
         handler.setFormatter(formatter)
         handler.addFilter(RedactingFilter())
         setattr(handler, _HANDLER_MARK, True)
-    for name in ("garmin_hub", "uvicorn.error", "uvicorn"):
+    for name in ("garmin_hub", "uvicorn.error", "uvicorn", *THIRD_PARTY_LOGGERS):
         logger = logging.getLogger(name)
         for old in [h for h in logger.handlers if getattr(h, _HANDLER_MARK, False)]:
             logger.removeHandler(old)
             old.close()
+    scrubber = _ScrubbingHandler(handlers)
+    setattr(scrubber, _HANDLER_MARK, True)
+    for name in THIRD_PARTY_LOGGERS:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.ERROR)
+        logger.propagate = False
+        logger.addHandler(scrubber)
     app_logger = logging.getLogger("garmin_hub")
     app_logger.setLevel(settings.log_level.upper())
     app_logger.propagate = False

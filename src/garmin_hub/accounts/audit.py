@@ -31,6 +31,18 @@ ALLOWED_DETAILS: dict[str, frozenset[str]] = {
     "user.deletion_requested": frozenset({"by"}),
     "user.deletion_step_failed": frozenset({"step"}),
     "user.deleted": frozenset({"by", "steps"}),
+    # Feature 002 (specs/002-garmin-account-linking/contracts/audit-events.md).
+    "garmin.notice_accepted": frozenset({"notice_version"}),
+    "garmin.account_linked": frozenset({"garmin_account_id", "recovered", "mfa"}),
+    "garmin.link_failed": frozenset({"reason"}),
+    "garmin.reauthenticated": frozenset({"garmin_account_id", "mfa"}),
+    "garmin.reauth_failed": frozenset({"garmin_account_id", "reason"}),
+    "garmin.status_changed": frozenset({"garmin_account_id", "from", "to", "via", "error_code"}),
+    "garmin.account_checked": frozenset({"garmin_account_id", "result"}),
+    "garmin.account_unlinked": frozenset({"garmin_account_id", "data"}),
+    "garmin.data_deletion_requested": frozenset({"garmin_account_id"}),
+    "garmin.account_deletion_step_failed": frozenset({"garmin_account_id", "step"}),
+    "garmin.account_deleted": frozenset({"garmin_account_id", "steps"}),
 }
 
 _PREFIX = re.compile(r"^(unknown|[0-9.]+/24|[0-9A-Fa-f:]+/48)$")

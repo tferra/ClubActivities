@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Mis cuentas Garmin{% endblock %}
+{% block content %}
+<h1>Mis cuentas Garmin</h1>
+<p><a href="/cuentas-garmin/vincular" class="button">Vincular una cuenta Garmin</a></p>
+{% if accounts %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Alias</th>
+      <th>Estado</th>
+      <th>Último login</th>
+      <th>Última sincronización</th>
+      <th>Última comprobación</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in accounts %}{% include "garmin/_row.html" %}{% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Todavía no has vinculado ninguna cuenta Garmin.
+<a href="/cuentas-garmin/vincular">Vincula tu primera cuenta</a>.</p>
+{% endif %}
+{% endblock %}

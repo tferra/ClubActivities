@@ -5,8 +5,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
-REQUIRED_SECRETS = ("GARMIN_HUB_DB_URL", "GARMIN_HUB_SESSION_SECRET")
+from garmin_hub.security.token_cipher import parse_master_keys
+
+REQUIRED_SECRETS = ("GARMIN_HUB_DB_URL", "GARMIN_HUB_SESSION_SECRET", "GARMIN_HUB_MASTER_KEYS")
 MIN_SESSION_SECRET_BYTES = 32
+INVALID_HINTS = {
+    "GARMIN_HUB_SESSION_SECRET": (
+        f"GARMIN_HUB_SESSION_SECRET necesita al menos {MIN_SESSION_SECRET_BYTES} bytes"
+    ),
+    "GARMIN_HUB_MASTER_KEYS": (
+        "formato <versión>:<clave>[,<versión>:<clave>...] con claves Fernet"
+    ),
+}
 
 
 class SecretProvider(Protocol):
@@ -35,6 +45,7 @@ class EnvSecretProvider:
 class Secrets:
     db_url: str = field(repr=False)
     session_secret: bytes = field(repr=False)
+    master_keys: str = field(repr=False)
 
 
 class MissingSecretsError(Exception):
@@ -51,23 +62,32 @@ class MissingSecretsError(Exception):
         if self.missing:
             parts.append(f"faltan secretos obligatorios: {', '.join(self.missing)}.")
         if self.invalid:
-            parts.append(
-                f"secretos no válidos: {', '.join(self.invalid)} "
-                f"(GARMIN_HUB_SESSION_SECRET necesita al menos {MIN_SESSION_SECRET_BYTES} bytes)."
-            )
+            hints = "; ".join(INVALID_HINTS[name] for name in self.invalid)
+            parts.append(f"secretos no válidos: {', '.join(self.invalid)} ({hints}).")
         return " ".join(parts)
 
 
 def load_secrets(provider: SecretProvider) -> Secrets:
-    """Comprueba los secretos obligatorios de la feature 001 (FR-001)."""
+    """Comprueba los secretos obligatorios (FR-001 de 001 y FR-027 de 002)."""
     values = {name: provider.get(name) for name in REQUIRED_SECRETS}
     missing = [name for name, value in values.items() if not value]
     invalid: list[str] = []
     session_secret = values["GARMIN_HUB_SESSION_SECRET"]
     if session_secret and len(session_secret.encode()) < MIN_SESSION_SECRET_BYTES:
         invalid.append("GARMIN_HUB_SESSION_SECRET")
+    master_keys = values["GARMIN_HUB_MASTER_KEYS"]
+    if master_keys:
+        try:
+            parse_master_keys(master_keys)
+        except ValueError:
+            invalid.append("GARMIN_HUB_MASTER_KEYS")
     if missing or invalid:
         raise MissingSecretsError(missing, invalid)
     assert values["GARMIN_HUB_DB_URL"] is not None  # noqa: S101
     assert session_secret is not None  # noqa: S101
-    return Secrets(db_url=values["GARMIN_HUB_DB_URL"], session_secret=session_secret.encode())
+    assert master_keys is not None  # noqa: S101
+    return Secrets(
+        db_url=values["GARMIN_HUB_DB_URL"],
+        session_secret=session_secret.encode(),
+        master_keys=master_keys,
+    )

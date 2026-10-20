@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Aviso de datos{% endblock %}
+{% block content %}
+<h1>Aviso sobre tus datos de Garmin</h1>
+{% include notice_template %}
+<form method="post" action="/cuentas-garmin/aviso" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label><span><input type="checkbox" name="accept" value="1" required> He leído y acepto</span></label>
+  <button type="submit">Continuar</button>
+</form>
+<p><a href="/cuentas-garmin">Volver a mis cuentas Garmin</a></p>
+{% endblock %}

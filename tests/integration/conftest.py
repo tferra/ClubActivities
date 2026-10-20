@@ -22,7 +22,17 @@ from sqlalchemy.pool import StaticPool
 
 from garmin_hub.db.engine import with_schema
 from garmin_hub.db.migrate import run_downgrade, run_upgrade
-from garmin_hub.db.schema import app_user, audit_event, metadata
+from garmin_hub.db.schema import (
+    app_user,
+    audit_event,
+    data_notice_acceptance,
+    garmin_account,
+    metadata,
+)
+from garmin_hub.garmin.client import GarminTokens
+from garmin_hub.garmin.fake import FakeGarminClient
+from garmin_hub.garmin_accounts import notice
+from garmin_hub.garmin_accounts.accounts import save_token
 from garmin_hub.logging_setup import JsonFormatter, RedactingFilter
 from garmin_hub.security import passwords
 from garmin_hub.security.csrf import ANON_COOKIE, anon_token, new_anon_pair, session_token
@@ -32,6 +42,10 @@ from garmin_hub.web.app import create_app
 DEFAULT_PASSWORD = "cielo-tranquilo-sobre-el-mar"
 TEST_IP = "203.0.113.57"
 TABLES_CHILD_FIRST = [
+    "garmin_token",
+    "garmin_account",
+    "data_notice_acceptance",
+    "garmin_login_failure",
     "user_session",
     "password_reset_code",
     "invitation",
@@ -108,8 +122,83 @@ def engine(raw_engine: Engine, db_schema: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def app(settings, secrets, engine, clock, fake_sleep):
-    return create_app(settings, secrets, engine=engine, clock=clock, sleep=fake_sleep)
+def fake_garmin() -> FakeGarminClient:
+    return FakeGarminClient()
+
+
+@pytest.fixture
+def app(settings, secrets, engine, clock, fake_sleep, fake_garmin):
+    return create_app(
+        settings, secrets, engine=engine, clock=clock, sleep=fake_sleep, garmin_client=fake_garmin
+    )
+
+
+@pytest.fixture
+def pending_logins(app):
+    return app.state.pending_logins
+
+
+@pytest.fixture
+def accept_notice(engine, clock):
+    def do_accept(user_id: uuid.UUID, version: int | None = None) -> None:
+        with engine.begin() as conn:
+            conn.execute(
+                insert(data_notice_acceptance).values(
+                    user_id=user_id,
+                    notice_version=version or notice.current_version(),
+                    accepted_at=clock(),
+                )
+            )
+
+    return do_accept
+
+
+@pytest.fixture
+def make_garmin_account(engine, clock, app):
+    """Inserta una cuenta Garmin directamente (sin el servicio de US1) y devuelve su id."""
+    counter = iter(range(1, 10_000))
+
+    def factory(
+        user_id: uuid.UUID,
+        *,
+        alias: str | None = None,
+        profile_id: int | None = None,
+        status: str = "valid",
+        with_token: bool = True,
+        error_code: str | None = None,
+        tokens: bytes | None = None,
+    ) -> uuid.UUID:
+        n = next(counter)
+        alias = alias or f"Cuenta {n}"
+        profile_id = profile_id if profile_id is not None else 100 + n
+        if status == "error" and error_code is None:
+            error_code = "identity_mismatch"
+        now = clock()
+        account_id = uuid.uuid4()
+        with engine.begin() as conn:
+            conn.execute(
+                insert(garmin_account).values(
+                    garmin_account_id=account_id,
+                    user_id=user_id,
+                    alias=alias,
+                    alias_key=alias.strip().casefold(),
+                    garmin_profile_id=profile_id,
+                    status=status,
+                    error_code=error_code,
+                    linked_at=now,
+                    last_login_at=now,
+                    unlinked_at=now if status == "unlinked" else None,
+                    deletion_requested_at=now if status == "deleting" else None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            if with_token and status in ("valid", "reauth_required", "error"):
+                value = tokens or json.dumps({"fake": profile_id, "rev": 0}).encode()
+                save_token(conn, account_id, GarminTokens(value), app.state.token_cipher, now)
+        return account_id
+
+    return factory
 
 
 @pytest.fixture
@@ -257,3 +346,54 @@ def make_invitation(engine, keys, clock):
         return code
 
     return factory
+
+
+@pytest.fixture
+def form_post(csrf_for):
+    """POST de formulario con el token CSRF de la sesión del cliente, sin seguir redirecciones."""
+
+    def post(client: TestClient, path: str, data: dict[str, Any] | None = None, **kwargs: Any):
+        return client.post(
+            path,
+            data={**(data or {}), "csrf_token": csrf_for(client)},
+            follow_redirects=False,
+            **kwargs,
+        )
+
+    return post
+
+
+@pytest.fixture
+def garmin_user(client, make_user, login_as, accept_notice) -> TestUser:
+    """Usuario normal con el aviso de datos aceptado y sesión iniciada en `client`."""
+    user = make_user()
+    accept_notice(user.user_id)
+    login_as(client, user)
+    return user
+
+
+@pytest.fixture
+def garmin_rows(engine):
+    def rows(user_id: uuid.UUID | None = None) -> list[dict[str, Any]]:
+        stmt = select(garmin_account).order_by(garmin_account.c.created_at)
+        if user_id is not None:
+            stmt = stmt.where(garmin_account.c.user_id == user_id)
+        with engine.connect() as conn:
+            return [dict(r._mapping) for r in conn.execute(stmt)]
+
+    return rows
+
+
+@pytest.fixture
+def garmin_ctx(app):
+    """Dependencias del dominio de cuentas Garmin, las mismas que usan las rutas."""
+    from garmin_hub.garmin_accounts.accounts import GarminContext
+
+    state = app.state
+    return GarminContext(
+        engine=state.engine,
+        client=state.garmin_client,
+        registry=state.pending_logins,
+        cipher=state.token_cipher,
+        settings=state.settings,
+    )

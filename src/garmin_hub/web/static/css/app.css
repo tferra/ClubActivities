@@ -27,3 +27,8 @@ table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line);
          vertical-align: top; }
 .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+a.button { display: inline-block; padding: .45rem .9rem; border-radius: 6px;
+           border: 1px solid var(--accent); color: var(--accent); text-decoration: none; }
+a.button.primary { background: var(--accent); color: #fff; }
+.attention { border-left: 4px solid var(--err); padding: .25rem 1rem; }

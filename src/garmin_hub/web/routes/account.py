@@ -17,6 +17,8 @@ from garmin_hub.accounts.users import (
     change_password,
     get_user,
 )
+from garmin_hub.garmin_accounts import notice
+from garmin_hub.garmin_accounts.accounts import accounts_needing_attention, count_active
 from garmin_hub.security.csrf import require_csrf
 from garmin_hub.security.ip import client_ip
 from garmin_hub.security.passwords import MSG_CONFIRM_MISMATCH
@@ -36,7 +38,16 @@ NOTICES = {
 
 @router.get("/")
 def home(request: Request, user: SessionUser = CurrentUser) -> Response:
-    return render(request, "home.html")
+    attention = []
+    new_notice = False
+    if user.role == "user":
+        with transaction(request) as conn:
+            attention = accounts_needing_attention(conn, user.user_id)
+            # Una versión nueva del aviso no detiene nada; solo se avisa (FR-012).
+            new_notice = count_active(conn, user.user_id) > 0 and not notice.has_accepted_current(
+                conn, user.user_id
+            )
+    return render(request, "home.html", {"attention": attention, "new_notice": new_notice})
 
 
 def _account_page(

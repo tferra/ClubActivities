@@ -17,6 +17,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "anyio>=4.6",
     "argon2-cffi>=23.1",
+    "cryptography>=44",
+    "garminconnect==0.3.17",
 ]
 
 [project.scripts]
@@ -45,14 +47,14 @@ artifacts = [
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-extend-exclude = [".specify", ".claude"]
+extend-exclude = [".specify", ".claude", "specs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S", "SIM", "RUF", "ANN"]
 ignore = ["ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ANN", "S105", "S106"]
+"tests/**" = ["S101", "ANN", "S105", "S106", "S311", "S608"]
 "src/garmin_hub/db/migrations/**" = ["ANN"]
 
 [tool.pytest.ini_options]

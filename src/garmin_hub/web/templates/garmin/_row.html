@@ -1,0 +1,33 @@
+<tr id="garmin-{{ a.garmin_account_id }}">
+  <td>{{ a.alias }}</td>
+  <td>{{ GARMIN_STATUS_LABELS[a.status] }}{% if a.status == "error" %}: {{ GARMIN_ERROR_MESSAGES.get(a.error_code, "") }}{% endif %}</td>
+  <td>{{ a.last_login_at | dt }}</td>
+  <td>{{ a.last_sync_at | dt_or_never }}</td>
+  <td>{{ a.last_checked_at | dt_or_never }}</td>
+  <td>
+    <div class="actions">
+    {% if a.status in ("valid", "reauth_required", "error") %}
+      {% if a.status == "valid" %}
+      <a href="/cuentas-garmin/{{ a.garmin_account_id }}/reautenticar" class="button">Reautenticar</a>
+      {% else %}
+      <a href="/cuentas-garmin/{{ a.garmin_account_id }}/reautenticar" class="button primary">Reautenticar</a>
+      {% endif %}
+      <form method="post" action="/cuentas-garmin/{{ a.garmin_account_id }}/comprobar"
+            hx-post="/cuentas-garmin/{{ a.garmin_account_id }}/comprobar" hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Comprobar</button>
+      </form>
+      <a href="/cuentas-garmin/{{ a.garmin_account_id }}/desvincular">Desvincular</a>
+    {% elif a.status == "unlinked" %}
+      <a href="/cuentas-garmin/{{ a.garmin_account_id }}/borrar-datos">Borrar datos</a>
+    {% elif a.status == "deleting" %}
+      <form method="post" action="/cuentas-garmin/{{ a.garmin_account_id }}/reintentar-borrado">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Reintentar</button>
+      </form>
+    {% endif %}
+    </div>
+    {% if row_message %}<p class="notice" role="status">{{ row_message }}</p>{% endif %}
+    {% if row_error %}<p class="error" role="alert">{{ row_error }}</p>{% endif %}
+  </td>
+</tr>
